@@ -219,3 +219,9 @@ Daha detaylı iç mimari, test ve operasyon dokümanları için:
 
 - `docs/internal/INDEX_TR.md`
 
+---
+
+### Lisans
+
+Bu proje, MIT lisansı ile lisanslanmıştır. Detaylar için `LICENSE` dosyasına bakabilirsiniz.
+
