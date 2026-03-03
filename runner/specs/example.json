@@ -1,0 +1,15 @@
+{
+  "name": "example",
+  "steps": [
+    {
+      "code": "H1_VISIBLE",
+      "title": "H1 is visible",
+      "action": { "type": "assertVisible", "selector": "h1" }
+    },
+    {
+      "code": "TITLE_CONTAINS",
+      "title": "H1 contains Example",
+      "action": { "type": "assertTextContains", "selector": "h1", "text": "Example" }
+    }
+  ]
+}

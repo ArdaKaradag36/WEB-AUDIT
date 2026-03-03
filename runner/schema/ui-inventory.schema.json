@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "UiInventory",
+  "type": "object",
+  "required": ["pageUrl", "capturedAt", "elements"],
+  "properties": {
+    "pageUrl": { "type": "string" },
+    "capturedAt": { "type": "string" },
+    "elements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["elementId", "type", "tagName", "pageUrl", "status", "tested"],
+        "properties": {
+          "elementId": { "type": "string" },
+          "elementKey": { "type": "string" },
+          "type": { "type": "string" },
+          "tagName": { "type": "string" },
+          "humanName": { "type": "string" },
+          "pageUrl": { "type": "string" },
+          "visible": { "type": "boolean" },
+          "enabled": { "type": "boolean" },
+          "recommendedSelectors": {
+            "type": "array",
+            "items": { "type": "object" }
+          },
+          "recommendedSelectorsLegacy": {
+            "type": "array",
+            "items": { "type": "object" }
+          },
+          "tested": { "type": "boolean" },
+          "status": { "type": "string" },
+          "reasonCode": { "type": ["string", "null"] },
+          "actionHint": { "type": ["string", "null"] },
+          "riskLevel": { "type": ["string", "null"] }
+        },
+        "additionalProperties": true
+      }
+    },
+    "scrollMetrics": {
+      "type": "object",
+      "properties": {
+        "newlyDiscoveredPerScrollStep": {
+          "type": "array",
+          "items": { "type": "number" }
+        },
+        "attemptedCountTotal": { "type": "number" },
+        "skippedHiddenCount": { "type": "number" },
+        "skippedOutOfViewportCount": { "type": "number" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
+

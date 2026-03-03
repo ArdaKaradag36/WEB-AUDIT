@@ -1,0 +1,32 @@
+{
+  "run": {
+    "runId": "test-run-1",
+    "url": "https://example.com",
+    "startedAt": "2025-01-01T00:00:00Z",
+    "finishedAt": "2025-01-01T00:01:00Z",
+    "status": "ok"
+  },
+  "findings": [
+    {
+      "ruleId": "rule-1",
+      "severity": "critical",
+      "category": "security_headers",
+      "title": "Missing CSP",
+      "detail": "Content-Security-Policy header is missing",
+      "remediation": "Add CSP header",
+      "meta": { "url": "https://example.com" }
+    },
+    {
+      "ruleId": "rule-2",
+      "severity": "warn",
+      "category": "console",
+      "title": "Console error",
+      "detail": "Uncaught error on page"
+    }
+  ],
+  "metrics": {
+    "durationMs": 60000,
+    "linkSampled": 10,
+    "linkBroken": 0
+  }
+}

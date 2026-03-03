@@ -1,0 +1,29 @@
+# Dependencies and build (never commit)
+**/node_modules/
+**/dist/
+**/.cache/
+**/.npm/
+
+# Audit outputs (CI produces these; do not commit)
+**/reports/
+**/out/
+**/artifacts/
+**/generated/
+
+# Playwright
+**/test-results/
+**/playwright-report/
+**/.playwright/
+**/trace.zip
+
+# Local / env
+**/*.log
+.env
+.env.local
+.env.*.local
+
+# OS/IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,52 @@
+name: Security Audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Run once a day at 02:00 UTC
+    - cron: "0 2 * * *"
+
+jobs:
+  dotnet-vulnerability-scan:
+    name: .NET dependency vulnerabilities
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+          dotnet-version: "8.0.x"
+
+      - name: Restore backend
+        working-directory: backend/KamuAudit.Api
+        run: dotnet restore
+
+      - name: List vulnerable packages (including transitive)
+        working-directory: backend/KamuAudit.Api
+        run: dotnet list package --vulnerable --include-transitive
+
+  npm-vulnerability-scan:
+    name: npm dependency vulnerabilities
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: "runner/.nvmrc"
+          cache: "npm"
+          cache-dependency-path: runner/package-lock.json
+
+      - name: Install runner dependencies
+        working-directory: runner
+        run: npm ci
+
+      - name: Run npm audit (high and above)
+        working-directory: runner
+        run: npm audit --audit-level=high
+

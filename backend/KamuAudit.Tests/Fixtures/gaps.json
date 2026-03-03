@@ -1,0 +1,12 @@
+{
+  "gaps": [
+    {
+      "elementId": "btn-submit",
+      "humanName": "Submit button",
+      "reasonCode": "NOT_VISIBLE",
+      "actionHint": "Scroll into view or make visible",
+      "riskLevel": "safe",
+      "recommendedScript": "page.locator('button').click();"
+    }
+  ]
+}

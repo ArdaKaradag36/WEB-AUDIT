@@ -1,0 +1,101 @@
+# Web Audit: PR = smoke (no strict); main = regression + quality gate (--strict).
+# Exit codes: 0 ok, 1 crash, 2 quality gate fail (critical>0 or error>5 or warn>20).
+
+name: Web Audit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  audit:
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: "runner/.nvmrc"
+          cache: "npm"
+          cache-dependency-path: runner/package-lock.json
+
+      - name: Install runner deps
+        run: npm ci
+        working-directory: runner
+
+      - name: Lint
+        run: npm run lint
+        working-directory: runner
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+        working-directory: runner
+
+      - name: Build
+        run: npm run build
+        working-directory: runner
+
+      - name: Run audit (smoke)
+        run: node dist/cli.js --url https://example.com --max-links 5 --max-ui-attempts 15 --out reports/runs/${{ github.run_id }}-${{ matrix.browser }}
+        working-directory: runner
+
+      - name: Run audit (strict, main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          node dist/cli.js --url https://example.com --max-links 5 --strict --out reports/runs/${{ github.run_id }}-${{ matrix.browser }}-strict
+        working-directory: runner
+
+      - name: Upload audit artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-${{ matrix.browser }}
+          path: runner/reports/
+          if-no-files-found: ignore
+
+  runner-tests:
+    name: Runner tests (Node 20)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: "runner/.nvmrc"
+          cache: "npm"
+          cache-dependency-path: runner/package-lock.json
+
+      - name: Install runner deps
+        run: npm ci
+        working-directory: runner
+
+      - name: Lint
+        run: npm run lint
+        working-directory: runner
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('runner/package-lock.json') }}
+
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+        working-directory: runner
+
+      - name: Build
+        run: npm run build
+        working-directory: runner
+
+      - name: Run tests
+        run: npm test
+        working-directory: runner

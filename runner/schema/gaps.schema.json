@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "UiGaps",
+  "type": "object",
+  "required": ["gaps"],
+  "properties": {
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["elementId", "type", "humanName", "pageUrl", "status", "reasonCode", "actionHint", "recommendedScript"],
+        "properties": {
+          "elementId": { "type": "string" },
+          "type": { "type": "string" },
+          "humanName": { "type": "string" },
+          "pageUrl": { "type": "string" },
+          "status": { "type": "string" },
+          "reasonCode": { "type": "string" },
+          "actionHint": { "type": "string" },
+          "confidence": { "type": ["number", "null"] },
+          "fixSuggestion": { "type": ["string", "null"] },
+          "evidence": { "type": ["object", "null"] },
+          "why": { "type": "string" },
+          "recommendedSelectors": {
+            "type": "array",
+            "items": { "type": "object" }
+          },
+          "recommendedScript": { "type": "string" },
+          "riskLevel": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}
+

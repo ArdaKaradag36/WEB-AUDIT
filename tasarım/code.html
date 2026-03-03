@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Kamu Web Audit Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#1e3b8f",
+                        "background-light": "#f6f6f8",
+                        "background-dark": "#121620",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100">
+<div class="flex h-screen overflow-hidden">
+<!-- Sidebar -->
+<aside class="w-64 bg-slate-900 text-slate-300 flex flex-col border-r border-slate-800">
+<div class="p-6 flex items-center gap-3">
+<div class="bg-primary p-2 rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined text-white text-2xl">shield_person</span>
+</div>
+<div>
+<h1 class="text-white font-bold text-lg leading-tight">Kamu Audit</h1>
+<p class="text-xs text-slate-500 uppercase tracking-wider font-semibold">Gov Compliance</p>
+</div>
+</div>
+<nav class="flex-1 px-4 py-4 space-y-1">
+<a class="flex items-center gap-3 px-3 py-2.5 bg-primary text-white rounded-lg transition-colors" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="text-sm font-medium">Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-800 hover:text-white rounded-lg transition-colors" href="#">
+<span class="material-symbols-outlined">add_circle</span>
+<span class="text-sm font-medium">New Audit</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-800 hover:text-white rounded-lg transition-colors" href="#">
+<span class="material-symbols-outlined">description</span>
+<span class="text-sm font-medium">Reports</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-800 hover:text-white rounded-lg transition-colors" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="text-sm font-medium">Settings</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-800 hover:text-white rounded-lg transition-colors" href="#">
+<span class="material-symbols-outlined">menu_book</span>
+<span class="text-sm font-medium">Documentation</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-800 hover:text-white rounded-lg transition-colors" href="#">
+<span class="material-symbols-outlined">chat_bubble</span>
+<span class="text-sm font-medium">Support</span>
+</a>
+</nav>
+<div class="p-4 border-t border-slate-800">
+<div class="bg-slate-800 rounded-xl p-4">
+<p class="text-xs text-slate-400 mb-2">Storage Usage</p>
+<div class="w-full bg-slate-700 h-1.5 rounded-full mb-2">
+<div class="bg-primary h-full w-2/3 rounded-full"></div>
+</div>
+<p class="text-xs text-white">64.2 GB of 100 GB</p>
+</div>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="flex-1 flex flex-col overflow-y-auto">
+<!-- Header -->
+<header class="h-16 border-b border-slate-200 bg-white dark:bg-slate-900 px-8 flex items-center justify-between sticky top-0 z-10">
+<div class="flex items-center gap-6 flex-1">
+<h2 class="text-xl font-bold text-slate-900">Dashboard Overview</h2>
+<div class="relative w-full max-w-md">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg">search</span>
+<input class="w-full bg-slate-100 border-none rounded-lg py-2 pl-10 pr-4 text-sm focus:ring-2 focus:ring-primary/20 transition-all" placeholder="Search audits, findings or rules..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-lg">
+<span class="size-2 bg-emerald-500 rounded-full animate-pulse"></span>
+<span class="text-xs font-bold uppercase tracking-wider">Production Env</span>
+</div>
+<button class="p-2 text-slate-500 hover:bg-slate-100 rounded-lg relative">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-2 right-2 size-2 bg-red-500 border-2 border-white rounded-full"></span>
+</button>
+<div class="h-8 w-px bg-slate-200 mx-1"></div>
+<div class="flex items-center gap-3">
+<div class="text-right">
+<p class="text-sm font-semibold text-slate-900">Admin User</p>
+<p class="text-xs text-slate-500">Government of Canada</p>
+</div>
+<div class="size-10 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="User profile photo of a professional man" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCfXTVek8uMg4aut_aiqIQ5_HFBsdasXHo6ldRUCfj61PEEtIpiDHMaKjpTc18x_qyW-vgl37p0QpUdRBUPAAcVsabEHoKBuE84D2A0QoDc2-sfxrydIHMXvQnz5Ec3T3Dn2JscXhg1n_CxkLKuYOB-ZyYnBzNK0D8t2pURuDg6GOkWTV-g3M7mptQYZudrs7tmf0GiIJ02MbXPDyIUX-UT6_ra0mmhIRjEvOw2puxx28FYdVuHOGUAMmAd9_8v7wNlcTzKafLpxiM"/>
+</div>
+</div>
+</div>
+</header>
+<!-- Dashboard Content -->
+<div class="p-8 space-y-8">
+<!-- Stats Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+<div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 bg-primary/5 rounded-lg text-primary">
+<span class="material-symbols-outlined">rocket_launch</span>
+</div>
+<span class="text-emerald-600 bg-emerald-50 text-xs font-bold px-2 py-1 rounded-lg">+12%</span>
+</div>
+<p class="text-slate-500 text-sm font-medium">Total Audit Runs</p>
+<h3 class="text-3xl font-bold text-slate-900 mt-1">1,284</h3>
+<p class="text-xs text-slate-400 mt-2">Past 30 days vs previous</p>
+</div>
+<div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 bg-emerald-50 rounded-lg text-emerald-600">
+<span class="material-symbols-outlined">check_circle</span>
+</div>
+<span class="text-emerald-600 bg-emerald-50 text-xs font-bold px-2 py-1 rounded-lg">+0.5%</span>
+</div>
+<p class="text-slate-500 text-sm font-medium">Success Rate</p>
+<h3 class="text-3xl font-bold text-slate-900 mt-1">98.2%</h3>
+<p class="text-xs text-slate-400 mt-2">Average across all sites</p>
+</div>
+<div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 bg-red-50 rounded-lg text-red-600">
+<span class="material-symbols-outlined">warning</span>
+</div>
+<span class="text-red-600 bg-red-50 text-xs font-bold px-2 py-1 rounded-lg">-5.2%</span>
+</div>
+<p class="text-slate-500 text-sm font-medium">Active Findings</p>
+<h3 class="text-3xl font-bold text-slate-900 mt-1">42</h3>
+<p class="text-xs text-slate-400 mt-2">Unresolved critical issues</p>
+</div>
+<div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 bg-indigo-50 rounded-lg text-indigo-600">
+<span class="material-symbols-outlined">grid_view</span>
+</div>
+<span class="text-emerald-600 bg-emerald-50 text-xs font-bold px-2 py-1 rounded-lg">+2.1%</span>
+</div>
+<p class="text-slate-500 text-sm font-medium">UI Test Coverage</p>
+<h3 class="text-3xl font-bold text-slate-900 mt-1">89.4%</h3>
+<p class="text-xs text-slate-400 mt-2">Components covered by tests</p>
+</div>
+</div>
+<!-- Table Section -->
+<div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+<div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+<h2 class="text-lg font-bold text-slate-900">Recent Findings</h2>
+<div class="flex gap-2">
+<button class="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">
+<span class="material-symbols-outlined text-lg">filter_alt</span>
+                                Filter
+                            </button>
+<button class="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors">
+<span class="material-symbols-outlined text-lg">download</span>
+                                Export Report
+                            </button>
+</div>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead class="bg-slate-50">
+<tr>
+<th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Severity</th>
+<th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Rule ID</th>
+<th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Title</th>
+<th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Category</th>
+<th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">URL</th>
+<th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Action</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-slate-100">
+<tr class="hover:bg-slate-50/50 transition-colors">
+<td class="px-6 py-4">
+<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700">Critical</span>
+</td>
+<td class="px-6 py-4 text-sm font-medium text-slate-900">WCAG-2.1-A</td>
+<td class="px-6 py-4 text-sm text-slate-600">Missing alt text on primary navigation images</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs font-medium">Accessibility</span>
+</td>
+<td class="px-6 py-4 text-sm text-primary hover:underline cursor-pointer">https://gov.site/home</td>
+<td class="px-6 py-4 text-right">
+<button class="text-slate-400 hover:text-primary transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</td>
+</tr>
+<tr class="hover:bg-slate-50/50 transition-colors">
+<td class="px-6 py-4">
+<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange-700">High</span>
+</td>
+<td class="px-6 py-4 text-sm font-medium text-slate-900">SEC-104</td>
+<td class="px-6 py-4 text-sm text-slate-600">Insecure form submission detected on user input</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs font-medium">Security</span>
+</td>
+<td class="px-6 py-4 text-sm text-primary hover:underline cursor-pointer">https://gov.site/login</td>
+<td class="px-6 py-4 text-right">
+<button class="text-slate-400 hover:text-primary transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</td>
+</tr>
+<tr class="hover:bg-slate-50/50 transition-colors">
+<td class="px-6 py-4">
+<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700">Medium</span>
+</td>
+<td class="px-6 py-4 text-sm font-medium text-slate-900">PERF-02</td>
+<td class="px-6 py-4 text-sm text-slate-600">Large unoptimized assets blocking main thread</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs font-medium">Performance</span>
+</td>
+<td class="px-6 py-4 text-sm text-primary hover:underline cursor-pointer">https://gov.site/gallery</td>
+<td class="px-6 py-4 text-right">
+<button class="text-slate-400 hover:text-primary transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</td>
+</tr>
+<tr class="hover:bg-slate-50/50 transition-colors">
+<td class="px-6 py-4">
+<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">Info</span>
+</td>
+<td class="px-6 py-4 text-sm font-medium text-slate-900">SEO-33</td>
+<td class="px-6 py-4 text-sm text-slate-600">Duplicate meta descriptions on paginated content</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs font-medium">SEO</span>
+</td>
+<td class="px-6 py-4 text-sm text-primary hover:underline cursor-pointer">https://gov.site/blog</td>
+<td class="px-6 py-4 text-right">
+<button class="text-slate-400 hover:text-primary transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</td>
+</tr>
+<tr class="hover:bg-slate-50/50 transition-colors">
+<td class="px-6 py-4">
+<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700">Critical</span>
+</td>
+<td class="px-6 py-4 text-sm font-medium text-slate-900">AUTH-01</td>
+<td class="px-6 py-4 text-sm text-slate-600">Broken authentication session management</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs font-medium">Auth</span>
+</td>
+<td class="px-6 py-4 text-sm text-primary hover:underline cursor-pointer">https://gov.site/admin</td>
+<td class="px-6 py-4 text-right">
+<button class="text-slate-400 hover:text-primary transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="px-6 py-4 border-t border-slate-100 flex items-center justify-between">
+<p class="text-sm text-slate-500">Showing 5 of 42 active findings</p>
+<div class="flex gap-2">
+<button class="px-3 py-1 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50" disabled="">Previous</button>
+<button class="px-3 py-1 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Next</button>
+</div>
+</div>
+</div>
+<!-- Footer Summary -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+<div class="bg-primary/5 p-6 rounded-xl border border-primary/10">
+<h4 class="font-bold text-primary mb-2 flex items-center gap-2">
+<span class="material-symbols-outlined text-lg">info</span>
+                            Next Scheduled Scans
+                        </h4>
+<div class="space-y-3">
+<div class="flex justify-between items-center text-sm">
+<span class="text-slate-700">Production Main Site</span>
+<span class="font-medium text-slate-900">Today, 23:00 EST</span>
+</div>
+<div class="flex justify-between items-center text-sm">
+<span class="text-slate-700">Internal HR Portal</span>
+<span class="font-medium text-slate-900">Tomorrow, 02:00 EST</span>
+</div>
+</div>
+</div>
+<div class="bg-slate-50 p-6 rounded-xl border border-slate-200">
+<h4 class="font-bold text-slate-900 mb-2 flex items-center gap-2">
+<span class="material-symbols-outlined text-lg">history</span>
+                            Activity Feed
+                        </h4>
+<div class="space-y-3">
+<div class="flex gap-3 text-sm">
+<span class="text-emerald-600 font-bold">●</span>
+<span class="text-slate-600">Security Audit completed for <span class="font-medium text-slate-900">gov.site/portal</span></span>
+<span class="ml-auto text-slate-400 text-xs">2h ago</span>
+</div>
+<div class="flex gap-3 text-sm">
+<span class="text-primary font-bold">●</span>
+<span class="text-slate-600">New rule set <span class="font-medium text-slate-900">WCAG 2.2</span> applied</span>
+<span class="ml-auto text-slate-400 text-xs">5h ago</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>

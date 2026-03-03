@@ -1,0 +1,11 @@
+{
+  "Version": 1,
+  "Hash": "NLa10ycMkyFOvRH1UrMYqtmCMf9KISNIwrsMAxS3BKQ=",
+  "Source": "KamuAudit.Api",
+  "BasePath": "_content/KamuAudit.Api",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [],
+  "Assets": []
+}

@@ -1,0 +1,14 @@
+version: 2
+updates:
+  # .NET / NuGet dependencies for backend
+  - package-ecosystem: "nuget"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+
+  # Node / npm dependencies for runner
+  - package-ecosystem: "npm"
+    directory: "/runner"
+    schedule:
+      interval: "weekly"
+
