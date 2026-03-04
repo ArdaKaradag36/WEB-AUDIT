@@ -108,6 +108,7 @@ public sealed class AuditRunnerBackgroundService : BackgroundService
                 {
                     next.Status = "completed";
                     next.LastError = null;
+                    next.ErrorType = null;
                     db.AuditRuns.Update(next);
                     var ingestor = scope.ServiceProvider.GetRequiredService<IAuditResultIngestor>();
                     await ingestor.IngestAsync(next.Id, stoppingToken);
@@ -123,6 +124,7 @@ public sealed class AuditRunnerBackgroundService : BackgroundService
                 else
                 {
                     next.AttemptCount++;
+                    next.RetryCount = next.AttemptCount;
                     if (string.IsNullOrWhiteSpace(next.LastError))
                     {
                         next.LastError = "Runner exited with failure (exit code 1 or exception).";

@@ -20,6 +20,9 @@ public sealed class KamuAuditDbContext : DbContext
     public DbSet<Finding> Findings => Set<Finding>();
     public DbSet<Gap> Gaps => Set<Gap>();
     public DbSet<AuditTargetCredential> AuditTargetCredentials => Set<AuditTargetCredential>();
+    public DbSet<GapTemplate> GapTemplates => Set<GapTemplate>();
+    public DbSet<AuditCoverage> AuditCoverages => Set<AuditCoverage>();
+    public DbSet<ElementHistory> ElementHistory => Set<ElementHistory>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -112,6 +115,12 @@ public sealed class KamuAuditDbContext : DbContext
 
             entity.Property(a => a.RetryAfterUtc);
 
+            // Error triage fields are currently not mapped to the database schema;
+            // they are used only in-memory by the runner and DTOs.
+            entity.Ignore(a => a.ErrorType);
+            entity.Ignore(a => a.LastExitCode);
+            entity.Ignore(a => a.RetryCount);
+
             entity.HasIndex(a => a.Status);
             entity.HasIndex(a => a.SystemId);
             entity.HasIndex(a => a.UserId);
@@ -201,6 +210,37 @@ public sealed class KamuAuditDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        // GapTemplates (normalized gaps per run)
+        builder.Entity<GapTemplate>(entity =>
+        {
+            entity.ToTable("gap_templates");
+
+            entity.HasKey(gt => gt.Id);
+
+            entity.Property(gt => gt.HumanName)
+                .HasMaxLength(500);
+
+            entity.Property(gt => gt.ReasonCode)
+                .IsRequired()
+                .HasMaxLength(100);
+
+            entity.Property(gt => gt.RiskLevel)
+                .IsRequired()
+                .HasMaxLength(50);
+
+            entity.Property(gt => gt.OccurrenceCount);
+
+            entity.Property(gt => gt.ExampleUrl)
+                .HasMaxLength(1000);
+
+            entity.HasIndex(gt => gt.AuditRunId);
+
+            entity.HasOne(gt => gt.AuditRun)
+                .WithMany()
+                .HasForeignKey(gt => gt.AuditRunId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         // AuditTargetCredentials
         builder.Entity<AuditTargetCredential>(entity =>
         {
@@ -228,6 +268,35 @@ public sealed class KamuAuditDbContext : DbContext
                 .WithOne()
                 .HasForeignKey<AuditTargetCredential>(c => c.AuditRunId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // AuditCoverage
+        builder.Entity<AuditCoverage>(entity =>
+        {
+            entity.ToTable("audit_coverage");
+
+            entity.HasKey(c => c.AuditRunId);
+
+            entity.Property(c => c.TotalElements);
+            entity.Property(c => c.TestedElements);
+            entity.Property(c => c.SkippedElements);
+            entity.Property(c => c.CoverageRatio);
+
+            entity.HasOne(c => c.AuditRun)
+                .WithOne()
+                .HasForeignKey<AuditCoverage>(c => c.AuditRunId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ElementHistory
+        builder.Entity<ElementHistory>(entity =>
+        {
+            entity.ToTable("element_history");
+
+            entity.HasKey(e => e.ElementHash);
+
+            entity.Property(e => e.ElementHash)
+                .HasMaxLength(500);
         });
     }
 }

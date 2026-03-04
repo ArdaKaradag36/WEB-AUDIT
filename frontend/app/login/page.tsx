@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiBaseUrl } from "../../lib/api";
 import { captureUnexpectedError } from "../../utils/errorHandler";
+import { loginWithToken } from "../../lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -41,8 +42,8 @@ export default function LoginPage() {
       }
       const body = await res.json();
       const token = body.token as string;
-      // Access token is now kept in memory (see useAuth); here we only navigate.
-      // Local storage usage is intentionally removed for security.
+      // Mevcut auth yapısı localStorage üzerinde çalışıyor; token'ı kaydet.
+      loginWithToken(token);
       router.push("/dashboard");
     } catch (err: any) {
       captureUnexpectedError(err, { scope: "LoginPage.handleSubmit" });

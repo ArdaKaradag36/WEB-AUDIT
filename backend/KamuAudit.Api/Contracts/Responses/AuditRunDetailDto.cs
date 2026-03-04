@@ -31,6 +31,18 @@ public sealed class AuditRunDetailDto
 
     public string? RunDir { get; set; }
 
+    /// <summary>Son çalışma hatası (varsa); başarısız run'lar için tanı amaçlı.</summary>
+    public string? LastError { get; set; }
+
+    /// <summary>High-level error classification for the last attempt (nullable when successful).</summary>
+    public string? ErrorType { get; set; }
+
+    /// <summary>Last process exit code emitted by the runner (if available).</summary>
+    public int? LastExitCode { get; set; }
+
+    /// <summary>Total number of retries that have been attempted for this run.</summary>
+    public int RetryCount { get; set; }
+
     /// <summary>Aggregate: findings count by severity (critical, error, warn, info).</summary>
     public AuditRunCountsDto? Counts { get; set; }
 

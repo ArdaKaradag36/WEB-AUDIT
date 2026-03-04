@@ -16,5 +16,8 @@ public sealed class AuditRunSummaryDto
     public DateTimeOffset? StartedAt { get; set; }
 
     public DateTimeOffset? FinishedAt { get; set; }
+
+    /// <summary>High-level error classification when the run is failed or retried.</summary>
+    public string? ErrorType { get; set; }
 }
 

@@ -64,7 +64,7 @@ export async function sampleLinks(page: Page, limit = 20): Promise<LinkCheck[]> 
           status: policy ? "SKIPPED" : "BROKEN",
           httpStatus: status,
           category: cat,
-          reason: policy ? `Policy blocked (${status})` : undefined,
+          reason: policy ? "NETWORK_POLICY" : undefined,
         });
       } else {
         results.push({ url, status: "OK", httpStatus: status });
@@ -76,7 +76,7 @@ export async function sampleLinks(page: Page, limit = 20): Promise<LinkCheck[]> 
       results.push({
         url,
         status: flake ? "SKIPPED" : "BROKEN",
-        reason: msg,
+        reason: flake ? "NETWORK_POLICY" : msg,
         category: "NETWORK",
       });
     }

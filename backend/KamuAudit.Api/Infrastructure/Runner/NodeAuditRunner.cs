@@ -51,6 +51,8 @@ public sealed class NodeAuditRunner : IAuditRunner
                 }
 
                 run.LastError = $"Runner simulated hang for {simulate} seconds.";
+                run.ErrorType = "RunnerTimeout";
+                run.LastExitCode = null;
                 return false;
             }
 
@@ -61,6 +63,8 @@ public sealed class NodeAuditRunner : IAuditRunner
             {
                 _logger.LogError("Runner workingDirectory not found: {WorkingDirectory}", workingDirectory);
                 run.LastError = $"Runner workingDirectory not found: {workingDirectory}";
+                run.ErrorType = "Unknown";
+                run.LastExitCode = null;
                 return false;
             }
 
@@ -153,6 +157,8 @@ public sealed class NodeAuditRunner : IAuditRunner
                 // Timeout: attempt to kill process and capture whatever output we can.
                 var timeoutMessage = $"Runner timeout after {timeoutMinutes} minutes.";
                 run.LastError = timeoutMessage;
+                run.ErrorType = "RunnerTimeout";
+                run.LastExitCode = null;
                 AuditMetrics.IncrementRunnerTimeouts();
 
                 try
@@ -196,6 +202,7 @@ public sealed class NodeAuditRunner : IAuditRunner
             }
 
             var exitCode = process.ExitCode;
+            run.LastExitCode = exitCode;
             if (!string.IsNullOrWhiteSpace(stdout))
                 _logger.LogInformation("Runner stdout (run {RunId}): {Stdout}", run.Id, stdout);
             if (!string.IsNullOrWhiteSpace(stderr))
@@ -207,6 +214,15 @@ public sealed class NodeAuditRunner : IAuditRunner
                 run.LastError = $"Runner exited with non-success exit code {exitCode}.";
             }
 
+            if (!success && string.IsNullOrWhiteSpace(run.ErrorType))
+            {
+                run.ErrorType = "Unknown";
+            }
+            if (success)
+            {
+                run.ErrorType = null;
+            }
+
             return success;
         }
         catch (Exception ex)
@@ -216,6 +232,11 @@ public sealed class NodeAuditRunner : IAuditRunner
             {
                 run.LastError = "Runner threw an exception. See logs for details.";
             }
+            if (string.IsNullOrWhiteSpace(run.ErrorType))
+            {
+                run.ErrorType = "Unknown";
+            }
+            run.LastExitCode = null;
             return false;
         }
     }

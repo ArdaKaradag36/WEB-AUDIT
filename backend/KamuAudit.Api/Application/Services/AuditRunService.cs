@@ -117,7 +117,8 @@ public sealed class AuditRunService : IAuditRunService
                 TargetUrl = a.TargetUrl,
                 Status = a.Status,
                 StartedAt = a.StartedAt,
-                FinishedAt = a.FinishedAt
+                FinishedAt = a.FinishedAt,
+                ErrorType = null
             })
             .ToListAsync(cancellationToken);
     }
@@ -281,6 +282,68 @@ public sealed class AuditRunService : IAuditRunService
             .Select(g => new { RiskLevel = g.Key, Count = g.Count() })
             .ToListAsync(cancellationToken);
 
+        // Most common gap reasonCode (for quick summary).
+        var reasonCounts = await _db.Gaps
+            .Where(g => g.AuditRunId == auditId)
+            .GroupBy(g => g.ReasonCode)
+            .Select(g => new { ReasonCode = g.Key, Count = g.Count() })
+            .OrderByDescending(x => x.Count)
+            .ToListAsync(cancellationToken);
+        var mostCommonGapReason = reasonCounts.FirstOrDefault()?.ReasonCode;
+
+        // Approximate console error density and top failing URL from findings meta JSON.
+        int? maxConsoleErrorPerPage = null;
+        string? topFailingUrl = null;
+
+        var consoleFinding = await _db.Findings
+            .AsNoTracking()
+            .Where(f => f.AuditRunId == auditId && f.RuleId == "console_rule" && f.Meta != null)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (consoleFinding?.Meta is { } consoleMeta)
+        {
+            try
+            {
+                var root = consoleMeta.RootElement;
+                if (root.TryGetProperty("consoleErrorCount", out var consoleErrorsProp) &&
+                    consoleErrorsProp.ValueKind == System.Text.Json.JsonValueKind.Number &&
+                    consoleErrorsProp.TryGetInt32(out var consoleErrorsVal))
+                {
+                    maxConsoleErrorPerPage = consoleErrorsVal;
+                }
+            }
+            catch
+            {
+                // best-effort only
+            }
+        }
+
+        var linkFinding = await _db.Findings
+            .AsNoTracking()
+            .Where(f => f.AuditRunId == auditId && f.RuleId == "link_rule" && f.Meta != null)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (linkFinding?.Meta is { } linkMeta)
+        {
+            try
+            {
+                var root = linkMeta.RootElement;
+                if (root.TryGetProperty("brokenSamples", out var brokenSamples) &&
+                    brokenSamples.ValueKind == System.Text.Json.JsonValueKind.Array &&
+                    brokenSamples.GetArrayLength() > 0)
+                {
+                    var sample = brokenSamples[0];
+                    if (sample.TryGetProperty("url", out var urlProp) &&
+                        urlProp.ValueKind == System.Text.Json.JsonValueKind.String)
+                    {
+                        topFailingUrl = urlProp.GetString();
+                    }
+                }
+            }
+            catch
+            {
+                // best-effort only
+            }
+        }
+
         return (new AuditSummaryResponse
         {
             AuditRunId = auditId,
@@ -296,8 +359,93 @@ public sealed class AuditRunService : IAuditRunService
             GapsByRiskRequiresAuth = riskCounts.FirstOrDefault(x => x.RiskLevel == "requires_auth")?.Count ?? 0,
             DurationMs = audit.DurationMs,
             LinkSampled = audit.LinkSampled,
-            LinkBroken = audit.LinkBroken
+            LinkBroken = audit.LinkBroken,
+            TotalElements = null,
+            TestedElements = null,
+            SkippedElements = null,
+            CoverageRatio = null,
+            MaxConsoleErrorPerPage = maxConsoleErrorPerPage,
+            TopFailingUrl = topFailingUrl,
+            MostCommonGapReason = mostCommonGapReason
         }, false);
+    }
+
+    public async Task<bool> DeleteAsync(
+        Guid id,
+        Guid? userId,
+        bool isAdmin,
+        CancellationToken cancellationToken = default)
+    {
+        var audit = await _db.AuditRuns.FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
+        if (audit is null)
+        {
+            return false;
+        }
+
+        if (!isAdmin && userId.HasValue && audit.UserId.HasValue && audit.UserId != userId)
+        {
+            // Çağıran bu run'a sahip değil; 404 gibi davran.
+            return false;
+        }
+
+        _db.AuditRuns.Remove(audit);
+        await _db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<(string? Csv, bool NotFound)> GetGapsCsvAsync(
+        Guid auditId,
+        Guid? userId,
+        bool isAdmin,
+        CancellationToken cancellationToken = default)
+    {
+        var audit = await _db.AuditRuns.AsNoTracking().FirstOrDefaultAsync(a => a.Id == auditId, cancellationToken);
+        if (audit is null) return (null, true);
+
+        if (!isAdmin && userId.HasValue && audit.UserId.HasValue && audit.UserId != userId)
+        {
+            return (null, true);
+        }
+
+        // Group gaps on the fly by HumanName + ReasonCode + RiskLevel to avoid duplicate spam.
+        var templates = await _db.Gaps
+            .AsNoTracking()
+            .Where(g => g.AuditRunId == auditId)
+            .GroupBy(g => new { g.HumanName, g.ReasonCode, g.RiskLevel })
+            .Select(g => new
+            {
+                g.Key.HumanName,
+                g.Key.ReasonCode,
+                g.Key.RiskLevel,
+                OccurrenceCount = g.Count()
+            })
+            .ToListAsync(cancellationToken);
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("HumanName,ReasonCode,RiskLevel,OccurrenceCount,ExampleUrl");
+
+        foreach (var t in templates.OrderByDescending(t => t.OccurrenceCount))
+        {
+            static string Escape(string? value)
+            {
+                if (string.IsNullOrWhiteSpace(value)) return "";
+                var v = value.Replace("\"", "\"\"");
+                return v.Contains(',') || v.Contains('\n') ? $"\"{v}\"" : v;
+            }
+
+            sb.Append(Escape(t.HumanName));
+            sb.Append(',');
+            sb.Append(Escape(t.ReasonCode));
+            sb.Append(',');
+            sb.Append(Escape(t.RiskLevel));
+            sb.Append(',');
+            sb.Append(t.OccurrenceCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            sb.Append(',');
+            sb.Append("");
+            sb.AppendLine();
+        }
+
+        return (sb.ToString(), false);
     }
 
     private static AuditRunDetailDto ToDetailDto(AuditRun a)
@@ -316,7 +464,11 @@ public sealed class AuditRunService : IAuditRunService
             Strict = a.Strict,
             Browser = a.Browser,
             Plugins = a.Plugins,
-            RunDir = a.RunDir
+            RunDir = a.RunDir,
+            LastError = a.LastError,
+            ErrorType = a.ErrorType,
+            LastExitCode = a.LastExitCode,
+            RetryCount = a.RetryCount
         };
     }
 

@@ -6,15 +6,20 @@ import {
   exportAuditJson,
   exportAuditPdf,
   exportAuditTrace,
-  exportFindingsCsv
+  exportFindingsCsv,
+  exportGapsCsv
 } from "../lib/exportService";
+import { apiBaseUrl, apiRequest } from "../lib/api";
+import { showToast } from "../utils/errorHandler";
 
 interface Props {
   auditId: string;
   context?: Omit<AuditExportContext, "auditId">;
+  enableDelete?: boolean;
+  onDeleted?: (id: string) => void;
 }
 
-export function AuditActionsMenu({ auditId, context }: Props) {
+export function AuditActionsMenu({ auditId, context, enableDelete, onDeleted }: Props) {
   const [open, setOpen] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement | null>(null);
@@ -46,8 +51,38 @@ export function AuditActionsMenu({ auditId, context }: Props) {
     };
   }
 
+  async function handleDelete() {
+    if (busyAction) return;
+
+    const shortId = auditId.slice(0, 8);
+    const confirmation = window.prompt(
+      `Bu denetimi kalıcı olarak silmek üzeresin.\nGeri alınamaz.\n\nOnaylamak için aşağıya bu ID'nin ilk 8 karakterini aynen yaz:\n\n${shortId}`
+    );
+    if (!confirmation) return;
+    if (confirmation.trim() !== shortId) {
+      showToast("ID eşleşmedi, silme iptal edildi.", "warning");
+      return;
+    }
+
+    setBusyAction("delete");
+    try {
+      await apiRequest<void>(`${apiBaseUrl}/api/Audits/${auditId}`, {
+        method: "DELETE"
+      });
+      showToast("Denetim başarıyla silindi.", "success");
+      if (onDeleted) {
+        onDeleted(auditId);
+      }
+      setOpen(false);
+    } catch {
+      // apiRequest zaten toast atıyor
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   async function handleAction(
-    key: "json" | "pdf" | "trace" | "csv"
+    key: "json" | "pdf" | "trace" | "csv" | "gapsCsv"
   ) {
     if (busyAction) return;
     setBusyAction(key);
@@ -61,6 +96,8 @@ export function AuditActionsMenu({ auditId, context }: Props) {
         await exportAuditTrace(ctx);
       } else if (key === "csv") {
         await exportFindingsCsv(ctx);
+      } else if (key === "gapsCsv") {
+        await exportGapsCsv(ctx);
       }
     } finally {
       setBusyAction(null);
@@ -114,6 +151,27 @@ export function AuditActionsMenu({ auditId, context }: Props) {
           >
             Bulguları Dışa Aktar (CSV)
           </button>
+          <button
+            type="button"
+            className="actions-menu-item"
+            onClick={() => handleAction("gapsCsv")}
+            disabled={!!busyAction}
+          >
+            Gap&apos;leri Dışa Aktar (CSV)
+          </button>
+          {enableDelete && (
+            <>
+              <hr />
+              <button
+                type="button"
+                className="actions-menu-item actions-menu-item-danger"
+                onClick={handleDelete}
+                disabled={!!busyAction}
+              >
+                Denetimi Sil
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>

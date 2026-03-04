@@ -18,7 +18,6 @@ export async function authorizedFetch(
   return fetch(input, {
     ...init,
     headers,
-    credentials: "include",
   });
 }
 

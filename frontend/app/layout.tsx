@@ -10,6 +10,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
   const router = useRouter();
 
+  const isActive = (...prefixes: string[]) =>
+    prefixes.some((p) => pathname === p || pathname.startsWith(p));
+
   const isPublicShell =
     pathname === "/" ||
     pathname.startsWith("/login") ||
@@ -92,11 +95,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <nav className="sidebar-nav">
                   <button
                     type="button"
-                    className={
-                      pathname.startsWith("/dashboard") || pathname.startsWith("/audits")
-                        ? "sidebar-link sidebar-link-active"
-                        : "sidebar-link"
-                    }
+                    className={isActive("/dashboard") ? "sidebar-link sidebar-link-active" : "sidebar-link"}
                     onClick={() => router.push("/dashboard")}
                   >
                     <span className="sidebar-link-icon" aria-hidden="true">
@@ -106,7 +105,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   </button>
                   <button
                     type="button"
-                    className="sidebar-link"
+                    className={isActive("/audits/new") ? "sidebar-link sidebar-link-active" : "sidebar-link"}
                     onClick={() => router.push("/audits/new")}
                   >
                     <span className="sidebar-link-icon" aria-hidden="true">
@@ -116,7 +115,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   </button>
                   <button
                     type="button"
-                    className="sidebar-link"
+                    className={isActive("/reports") ? "sidebar-link sidebar-link-active" : "sidebar-link"}
                     onClick={() => router.push("/reports")}
                   >
                     <span className="sidebar-link-icon" aria-hidden="true">
@@ -126,7 +125,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   </button>
                   <button
                     type="button"
-                    className="sidebar-link"
+                    className={isActive("/settings") ? "sidebar-link sidebar-link-active" : "sidebar-link"}
                     onClick={() => router.push("/settings")}
                   >
                     <span className="sidebar-link-icon" aria-hidden="true">
@@ -136,7 +135,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   </button>
                   <button
                     type="button"
-                    className="sidebar-link"
+                    className={isActive("/docs", "/documentation") ? "sidebar-link sidebar-link-active" : "sidebar-link"}
                     onClick={() => router.push("/docs")}
                   >
                     <span className="sidebar-link-icon" aria-hidden="true">
@@ -146,7 +145,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   </button>
                   <button
                     type="button"
-                    className="sidebar-link"
+                    className={isActive("/support") ? "sidebar-link sidebar-link-active" : "sidebar-link"}
                     onClick={() => router.push("/support")}
                   >
                     <span className="sidebar-link-icon" aria-hidden="true">

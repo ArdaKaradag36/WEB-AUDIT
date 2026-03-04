@@ -97,6 +97,15 @@ public sealed class MetricsJson
 
     [JsonPropertyName("requestFailed")]
     public int? RequestFailed { get; set; }
+
+    [JsonPropertyName("skippedNetwork")]
+    public int? SkippedNetwork { get; set; }
+
+    [JsonPropertyName("retriedRequests")]
+    public int? RetriedRequests { get; set; }
+
+    [JsonPropertyName("realFailures")]
+    public int? RealFailures { get; set; }
 }
 
 public sealed class UiCoverageSummaryJson
@@ -109,6 +118,9 @@ public sealed class UiCoverageSummaryJson
 
     [JsonPropertyName("actionableGaps")]
     public int ActionableGaps { get; set; }
+
+    [JsonPropertyName("skippedElements")]
+    public int? SkippedElements { get; set; }
 }
 
 /// <summary>

@@ -51,4 +51,23 @@ public interface IAuditRunService
         Guid? userId,
         bool isAdmin,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes an audit run and its related data if the caller is allowed.
+    /// Returns false when the run does not exist or caller has no access.
+    /// </summary>
+    Task<bool> DeleteAsync(
+        Guid id,
+        Guid? userId,
+        bool isAdmin,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns a CSV representation of normalized gaps (GapTemplates) for the given audit run.
+    /// </summary>
+    Task<(string? Csv, bool NotFound)> GetGapsCsvAsync(
+        Guid auditId,
+        Guid? userId,
+        bool isAdmin,
+        CancellationToken cancellationToken = default);
 }

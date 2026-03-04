@@ -36,6 +36,24 @@ export type RuleEngineInput = {
   thirdPartyDenylist?: string[];
 };
 
+function isTelemetryUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return (
+      host.includes("google-analytics") ||
+      host.includes("googletagmanager") ||
+      host.includes("doubleclick") ||
+      host.includes("gstatic") ||
+      host.includes("youtube") ||
+      host.includes("ytimg") ||
+      host.includes("googlesyndication")
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function runRuleEngine(input: RuleEngineInput): Finding[] {
   const findings: Finding[] = [];
 
@@ -76,7 +94,8 @@ export function runRuleEngine(input: RuleEngineInput): Finding[] {
     });
   }
 
-  const httpBad = input.networkIssues.filter((i) => i.kind === "HTTP_4XX_5XX");
+  const networkNonPolicy = input.networkIssues.filter((i) => !i.policyReason);
+  const httpBad = networkNonPolicy.filter((i) => i.kind === "HTTP_4XX_5XX");
   if (httpBad.length > 0) {
     findings.push({
       ruleId: "network_rule",
@@ -89,7 +108,7 @@ export function runRuleEngine(input: RuleEngineInput): Finding[] {
     });
   }
 
-  const failedReq = input.networkIssues.filter((i) => i.kind === "FAILED_REQUEST");
+  const failedReq = networkNonPolicy.filter((i) => i.kind === "FAILED_REQUEST");
   if (failedReq.length > 0) {
     findings.push({
       ruleId: "network_rule",
@@ -100,6 +119,25 @@ export function runRuleEngine(input: RuleEngineInput): Finding[] {
       remediation:
         "Investigate DNS/timeouts/blocked requests; check firewall/proxy policies in public networks.",
       meta: { count: failedReq.length, samples: failedReq.slice(0, 10) },
+    });
+  }
+
+  // Telemetry / analytics endpoints: keep as informational only.
+  const telemetryIssues = input.networkIssues.filter(
+    (i) =>
+      (i.kind === "HTTP_4XX_5XX" || i.kind === "FAILED_REQUEST") &&
+      isTelemetryUrl(i.url)
+  );
+  if (telemetryIssues.length > 0) {
+    findings.push({
+      ruleId: "network_telemetry",
+      severity: "info",
+      category: "network",
+      title: "Telemetry/analytics endpoints failed",
+      detail: `${telemetryIssues.length} request(s) to analytics/telemetry domains failed or returned errors.`,
+      remediation:
+        "Review telemetry/analytics endpoints if required; these are informational only for application availability.",
+      meta: { samples: telemetryIssues.slice(0, 10) },
     });
   }
 

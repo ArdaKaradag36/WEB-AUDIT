@@ -77,7 +77,9 @@ async function main(): Promise<0 | 1 | 2> {
   const runId = uuidv4();
   const defaultOut = path.join("reports", "runs", runId);
   const outDir = getArg("--out") ?? defaultOut;
-  const tempDir = path.join(outDir, ".tmp");
+  // Tüm artefaktlar önce aynı klasör altında kardeş bir temp dizinine yazılır.
+  // Örn: outDir = reports/runs/<id>, tempDir = reports/runs/<id>.tmp
+  const tempDir = path.join(path.dirname(outDir), path.basename(outDir) + ".tmp");
   const linkLimit = Number(getArg("--max-links") ?? getArg("--linkLimit") ?? "20");
   const headless = getBoolArg("--headless", true);
   const safeMode = getBoolArg("--safe-mode", true);
@@ -142,7 +144,7 @@ async function main(): Promise<0 | 1 | 2> {
   const consoleCollector = await collectConsoleIssues(page);
   const consoleIssues = consoleCollector.issues;
   const pageErrors = consoleCollector.pageErrors;
-  const networkIssues = await collectNetworkIssues(page);
+  const { issues: networkIssues, stats: networkStats } = await collectNetworkIssues(page);
   const responseUrls = collectResponseUrls(page);
 
   // 1) Homepage open
@@ -364,8 +366,12 @@ async function main(): Promise<0 | 1 | 2> {
   });
 
   // 3) Network health
-  const httpBad = networkIssues.filter((i) => i.kind === "HTTP_4XX_5XX");
-  const failedReq = networkIssues.filter((i) => i.kind === "FAILED_REQUEST");
+  const httpBad = networkIssues.filter(
+    (i) => i.kind === "HTTP_4XX_5XX" && !i.policyReason
+  );
+  const failedReq = networkIssues.filter(
+    (i) => i.kind === "FAILED_REQUEST" && !i.policyReason
+  );
 
   results.push({
     code: "CORE.NETWORK.NO_4XX_5XX",
@@ -381,7 +387,8 @@ async function main(): Promise<0 | 1 | 2> {
     meta: { count: failedReq.length, samples: failedReq.slice(0, 10) },
   });
 
-    // 4) Link sampling
+  // 4) Link sampling
+  let skippedNetworkFromLinks = 0;
   if (isBlocked) {
     results.push({
       code: "CORE.LINKS.SAMPLE_OK",
@@ -404,6 +411,7 @@ async function main(): Promise<0 | 1 | 2> {
 
       // 🔎 timeout/network SKIPPED sayısı
       const skippedNetwork = skipped.filter((x) => x.category === "NETWORK").length;
+      skippedNetworkFromLinks = skippedNetwork;
 
       // Plugin önerileri (BROKEN üstünden)
       if ((brokenByCategory["AUTH"] ?? 0) > 0 && !requiresPlugins.includes("auth-basic")) {
@@ -515,7 +523,7 @@ async function main(): Promise<0 | 1 | 2> {
     console.warn("UI inventory/gaps failed:", e?.message);
   }
 
-  const tracePath = artifactPathInRun(outDir, "trace.zip");
+  const tracePath = artifactPathInRun(tempDir, "trace.zip");
   await context.tracing.stop({ path: tracePath });
   addArtifact(artifacts, "TRACE", tracePath);
 
@@ -624,8 +632,13 @@ async function main(): Promise<0 | 1 | 2> {
     linkBroken: linkChecks.filter((l) => l.status === "BROKEN").length,
     consoleErrors: consoleIssues.filter((i) => i.type === "error").length,
     consoleWarnings: consoleIssues.filter((i) => i.type === "warning").length,
-    response4xx5xx: networkIssues.filter((i) => i.kind === "HTTP_4XX_5XX").length,
-    requestFailed: networkIssues.filter((i) => i.kind === "FAILED_REQUEST").length,
+    response4xx5xx: networkIssues.filter((i) => i.kind === "HTTP_4XX_5XX" && !i.policyReason).length,
+    requestFailed: networkIssues.filter((i) => i.kind === "FAILED_REQUEST" && !i.policyReason).length,
+    skippedNetwork:
+      skippedNetworkFromLinks +
+      (networkStats?.skippedNetwork ?? 0),
+    retriedRequests: networkStats?.retriedRequests ?? 0,
+    realFailures: networkStats?.realFailures ?? 0,
   };
 
   let playwrightVersion: string | undefined;

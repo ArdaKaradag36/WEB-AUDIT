@@ -354,6 +354,20 @@ html.dark {
   font-size: 0.8rem;
 }
 
+@media (max-width: 900px) {
+  .login-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .login-left {
+    padding: 2rem 1.5rem;
+  }
+
+  .login-right {
+    padding: 1.75rem 1.5rem 2.25rem;
+  }
+}
+
 .login-right-grid h3 {
   font-size: 0.9rem;
   font-weight: 700;
@@ -997,27 +1011,82 @@ html.dark {
   color: #0f172a;
 }
 
-.metric-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 0.75rem;
-  background: rgba(37, 99, 235, 0.08);
+.metric-ring {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  border-radius: 9999px;
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 0.5rem;
+  background:
+    conic-gradient(
+      var(--ring-color, #1e3a8a) 0deg var(--progress, 0%),
+      rgba(148, 163, 184, 0.25) var(--progress, 0%) 360deg
+    );
 }
 
-.metric-icon-success {
-  background: rgba(16, 185, 129, 0.1);
+.metric-ring-primary {
+  --ring-color: #1e3a8a;
 }
 
-.metric-icon-warn {
-  background: rgba(248, 113, 113, 0.1);
+.metric-ring-success {
+  --ring-color: #15803d;
 }
 
-.metric-icon-info {
-  background: rgba(129, 140, 248, 0.1);
+.metric-ring-warn {
+  --ring-color: #b91c1c;
+}
+
+.metric-ring-info {
+  --ring-color: #4f46e5;
+}
+
+.metric-ring-progress {
+  /* sadece CSS değişkenini taşıyan dummy eleman – JS'ten progress güncellemek için */
+}
+
+.metric-ring-inner {
+  width: 64px;
+  height: 64px;
+  border-radius: 9999px;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.35);
+}
+
+.metric-ring-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.coverage-bar {
+  margin-top: 0.5rem;
+  width: 100%;
+  height: 6px;
+  border-radius: 9999px;
+  overflow: hidden;
+  background-color: rgba(148, 163, 184, 0.3);
+  display: flex;
+}
+
+.coverage-bar-segment {
+  height: 100%;
+}
+
+.coverage-bar-tested {
+  background-color: #22c55e;
+}
+
+.coverage-bar-skipped {
+  background-color: #facc15;
+}
+
+.coverage-bar-unknown {
+  background-color: #94a3b8;
 }
 
 .metric-label {
@@ -1190,14 +1259,40 @@ html.dark {
   gap: 0.75rem;
 }
 
+.audit-summary-card .audit-target-url {
+  display: inline-block;
+  max-width: 100%;
+  font-size: 0.85rem;
+  color: #1d4ed8;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.audit-summary-card .audit-target-url:hover {
+  text-decoration: underline;
+}
+
 .summary-label {
-  font-size: 0.7rem;
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 500;
   color: var(--text-muted);
+  margin-bottom: 0.1rem;
 }
 
 .summary-value {
-  font-size: 0.85rem;
+  display: block;
+  font-size: 0.95rem;
   font-weight: 600;
+  color: #0f172a;
+}
+
+.summary-value-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+  word-break: break-all;
 }
 
 .status-pill {
@@ -1357,5 +1452,9 @@ html.dark {
 .actions-menu-item:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+.actions-menu-item-danger {
+  color: #b91c1c;
 }
 

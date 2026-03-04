@@ -107,6 +107,19 @@ public sealed class AuditsController : ControllerBase
         return Ok(response);
     }
 
+    [HttpGet("{id:guid}/gaps.csv")]
+    public async Task<IActionResult> GetGapsCsv(Guid id, CancellationToken cancellationToken = default)
+    {
+        var (userId, isAdmin) = GetCurrentUser();
+        var (csv, notFound) = await _auditRunService.GetGapsCsvAsync(id, userId, isAdmin, cancellationToken);
+        if (notFound || csv is null)
+            return NotFound();
+
+        var fileName = $"audit_{id:N}_gaps.csv";
+        var bytes = System.Text.Encoding.UTF8.GetBytes(csv);
+        return File(bytes, "text/csv; charset=utf-8", fileName);
+    }
+
     [HttpGet("{id:guid}/summary")]
     public async Task<ActionResult<AuditSummaryResponse>> GetSummary(Guid id, CancellationToken cancellationToken = default)
     {
@@ -115,6 +128,24 @@ public sealed class AuditsController : ControllerBase
         if (notFound)
             return NotFound();
         return Ok(response);
+    }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> DeleteAudit(Guid id, CancellationToken cancellationToken = default)
+    {
+        var (userId, isAdmin) = GetCurrentUser();
+        if (userId is null && !isAdmin)
+        {
+            return Forbid();
+        }
+
+        var deleted = await _auditRunService.DeleteAsync(id, userId, isAdmin, cancellationToken);
+        if (!deleted)
+        {
+            return NotFound();
+        }
+
+        return NoContent();
     }
 
     private (Guid? UserId, bool IsAdmin) GetCurrentUser()

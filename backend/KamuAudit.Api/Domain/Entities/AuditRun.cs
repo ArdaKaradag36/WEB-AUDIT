@@ -65,6 +65,15 @@ public sealed class AuditRun
     /// <summary>When set, job is re-queued and will only be picked after this time (exponential backoff).</summary>
     public DateTimeOffset? RetryAfterUtc { get; set; }
 
+    /// <summary>High-level error classification for the last run attempt (nullable for successful runs).</summary>
+    public string? ErrorType { get; set; }
+
+    /// <summary>Last process exit code emitted by the runner (if available).</summary>
+    public int? LastExitCode { get; set; }
+
+    /// <summary>Total number of retries that have been attempted for this run.</summary>
+    public int RetryCount { get; set; }
+
     public ICollection<Finding> Findings { get; set; } = new List<Finding>();
 
     public ICollection<Gap> Gaps { get; set; } = new List<Gap>();

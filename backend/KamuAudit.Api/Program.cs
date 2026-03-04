@@ -41,6 +41,7 @@ builder.Services.AddScoped<IAuditRunService, AuditRunService>();
 builder.Services.AddSingleton<ICredentialProtector, DataProtectionCredentialProtector>();
 builder.Services.AddScoped<IAuditRunner, NodeAuditRunner>();
 builder.Services.AddScoped<IAuditResultIngestor, AuditResultIngestor>();
+builder.Services.AddScoped<IReportingService, ReportingService>();
 builder.Services.AddHostedService<AuditRunnerBackgroundService>();
 builder.Services.AddHostedService<RetentionCleanupBackgroundService>();
 
@@ -66,7 +67,7 @@ if (corsEnabled && allowedOrigins.Length > 0)
         options.AddPolicy("FrontendCors", policy =>
         {
             policy.WithOrigins(allowedOrigins)
-                  .WithMethods("GET", "POST", "OPTIONS")
+                  .WithMethods("GET", "POST", "DELETE", "OPTIONS")
                   .WithHeaders("Content-Type", "Authorization")
                   .DisallowCredentials();
         });

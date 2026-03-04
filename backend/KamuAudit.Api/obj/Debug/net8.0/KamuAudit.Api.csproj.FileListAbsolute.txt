@@ -144,3 +144,4 @@ C:\Users\karad\Desktop\kamu-web-audit\backend\KamuAudit.Api\obj\Debug\net8.0\sta
 C:\Users\karad\Desktop\kamu-web-audit\backend\KamuAudit.Api\obj\Debug\net8.0\staticwebassets\msbuild.buildMultiTargeting.KamuAudit.Api.props
 C:\Users\karad\Desktop\kamu-web-audit\backend\KamuAudit.Api\obj\Debug\net8.0\staticwebassets\msbuild.buildTransitive.KamuAudit.Api.props
 C:\Users\karad\Desktop\kamu-web-audit\backend\KamuAudit.Api\obj\Debug\net8.0\staticwebassets.pack.json
+C:\Users\karad\Desktop\kamu-web-audit\backend\KamuAudit.Api\obj\Debug\net8.0\KamuAudit.Api.sourcelink.json

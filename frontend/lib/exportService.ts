@@ -258,6 +258,26 @@ export async function exportFindingsCsv(ctx: AuditExportContext) {
   }
 }
 
+export async function exportGapsCsv(ctx: AuditExportContext) {
+  try {
+    const auditId = ctx.auditId;
+    const res = await authorizedFetch(
+      `${apiBaseUrl}/api/Audits/${auditId}/gaps.csv`
+    );
+    if (!res.ok) {
+      throw new Error("Gap CSV indirilemedi (sunucu hatası).");
+    }
+    const text = await res.text();
+    const filename = `kamu-web-audit_${auditId}_gaps.csv`;
+    // Server already returns normalized gaps CSV; just stream it down.
+    downloadBlob("\uFEFF" + text, filename, "text/csv;charset=utf-8");
+    showToast("Gap CSV dışa aktarıldı.", "success");
+  } catch (err: any) {
+    captureUnexpectedError(err, { scope: "exportGapsCsv" });
+    showToast(err?.message ?? "Gap CSV dışa aktarılamadı.");
+  }
+}
+
 export async function exportAuditTrace(ctx: AuditExportContext) {
   try {
     const full = await ensureContext(ctx);

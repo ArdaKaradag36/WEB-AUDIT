@@ -63,6 +63,7 @@ public sealed class AuditResultIngestor : IAuditResultIngestor
         if (!Directory.Exists(runDirFull))
         {
             _logger.LogWarning("RunDir does not exist for audit {AuditRunId}: {RunDir}", auditRunId, runDirFull);
+            run.ErrorType ??= "IngestionError";
             AuditMetrics.IncrementIngestionFailures();
             return;
         }
@@ -79,6 +80,8 @@ public sealed class AuditResultIngestor : IAuditResultIngestor
             {
                 run.LastError = $"Ingestion skipped: completion marker run.complete.json not found in {runDirFull}.";
             }
+
+            run.ErrorType ??= "IngestionError";
 
             // For safety, mark the run as failed if it is still in a non-terminal state.
             if (!string.Equals(run.Status, "failed", StringComparison.OrdinalIgnoreCase))
@@ -104,6 +107,8 @@ public sealed class AuditResultIngestor : IAuditResultIngestor
             {
                 run.LastError = $"Ingestion skipped: summary.json not found in {runDirFull}.";
             }
+
+            run.ErrorType ??= "IngestionError";
 
             AuditMetrics.IncrementIngestionFailures();
             return;
@@ -188,14 +193,23 @@ public sealed class AuditResultIngestor : IAuditResultIngestor
         }
 
         RunMetrics? metrics = null;
-        if (root?.Metrics is { } m)
+        if (root is not null)
         {
-            metrics = new RunMetrics
+            if (root.Metrics is { } m)
             {
-                DurationMs = m.DurationMs,
-                LinkSampled = m.LinkSampled,
-                LinkBroken = m.LinkBroken
-            };
+                metrics ??= new RunMetrics();
+                metrics.DurationMs = m.DurationMs;
+                metrics.LinkSampled = m.LinkSampled;
+                metrics.LinkBroken = m.LinkBroken;
+            }
+
+            if (root.UiCoverage is { } c)
+            {
+                metrics ??= new RunMetrics();
+                metrics.TotalElements = c.TotalElements;
+                metrics.TestedElements = c.TestedElements;
+                metrics.SkippedElements = c.SkippedElements;
+            }
         }
 
         return (entities, metrics);
@@ -206,6 +220,9 @@ public sealed class AuditResultIngestor : IAuditResultIngestor
         public long? DurationMs { get; set; }
         public int? LinkSampled { get; set; }
         public int? LinkBroken { get; set; }
+        public int? TotalElements { get; set; }
+        public int? TestedElements { get; set; }
+        public int? SkippedElements { get; set; }
     }
 
     private static Finding MapToFinding(FindingJson j)
@@ -250,6 +267,9 @@ public sealed class AuditResultIngestor : IAuditResultIngestor
 
         return entities;
     }
+
+    // Normalization and element history are disabled for now at ingestion-time;
+    // gap spam is handled in reporting/export by grouping on HumanName + ReasonCode.
 
     private static Gap MapToGap(GapJson j)
     {

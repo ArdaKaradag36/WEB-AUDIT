@@ -58,6 +58,12 @@ export type Metrics = {
   consoleWarnings?: number;
   response4xx5xx?: number;
   requestFailed?: number;
+  /** Number of link/network checks we explicitly skipped due to NETWORK_POLICY (timeouts/429/blocked). */
+  skippedNetwork?: number;
+  /** Number of retry attempts performed for flaky network requests. */
+  retriedRequests?: number;
+  /** Number of requests that still failed after retry (real failures). */
+  realFailures?: number;
 };
 
 export type RunMetadata = {

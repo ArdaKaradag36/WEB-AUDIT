@@ -9,12 +9,15 @@ export interface AuditSummaryRow {
   status: string;
   startedAt?: string;
   finishedAt?: string;
+  errorType?: string;
 }
 
 interface Props {
   audits: AuditSummaryRow[];
   onSelect(id: string): void;
   showActions?: boolean;
+  enableDeleteActions?: boolean;
+  onDeleted?: (id: string) => void;
 }
 
 function formatDateTime(value?: string): string {
@@ -24,7 +27,7 @@ function formatDateTime(value?: string): string {
   return d.toLocaleString("tr-TR");
 }
 
-export function AuditListTable({ audits, onSelect, showActions }: Props) {
+export function AuditListTable({ audits, onSelect, showActions, enableDeleteActions, onDeleted }: Props) {
   return (
     <div className="card-table-wrapper">
       <table className="card-table">
@@ -60,7 +63,11 @@ export function AuditListTable({ audits, onSelect, showActions }: Props) {
                     e.stopPropagation();
                   }}
                 >
-                  <AuditActionsMenu auditId={a.id} />
+                  <AuditActionsMenu
+                    auditId={a.id}
+                    enableDelete={enableDeleteActions}
+                    onDeleted={onDeleted}
+                  />
                 </td>
               )}
             </tr>
