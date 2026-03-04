@@ -11,6 +11,7 @@ using KamuAudit.Api.Infrastructure;
 using KamuAudit.Api.Infrastructure.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Formatting.Compact;
 using Serilog.Context;
@@ -78,15 +79,41 @@ builder.Services.AddJwtAuth(builder.Configuration);
 // Controller tabanlı API
 builder.Services.AddControllers();
 
-// Swagger
+// Swagger (only for development; with JWT auth support)
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "KamuAudit API",
+        Version = "v1"
+    });
+
+    var securityScheme = new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "JWT Bearer token. Örnek: \"Bearer {token}\""
+    };
+
+    c.AddSecurityDefinition("Bearer", securityScheme);
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        { securityScheme, Array.Empty<string>() }
+    });
+});
 
 var app = builder.Build();
 
-// Swagger'ı tüm ortamlarda açıyoruz; erişim sadece lokal geliştirici makinesinde.
-app.UseSwagger();
-app.UseSwaggerUI();
+// Swagger sadece Development ortamında aktif
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
 app.UseHttpsRedirection();
 

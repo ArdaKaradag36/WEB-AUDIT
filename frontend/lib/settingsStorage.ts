@@ -61,7 +61,12 @@ function safeParse<T>(raw: string | null, fallback: T): T {
   try {
     const parsed = JSON.parse(raw);
     return { ...fallback, ...parsed };
-  } catch {
+  } catch (error) {
+    // Corrupt local storage entry; log and fall back to defaults.
+    // Import is local to avoid cyclic deps at module top-level.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+    const { logError } = require("../utils/errorHandler") as typeof import("../utils/errorHandler");
+    logError(error, { scope: "settingsStorage.safeParse" });
     return fallback;
   }
 }

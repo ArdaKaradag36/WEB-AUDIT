@@ -1,29 +1,24 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { apiBaseUrl, authorizedFetch } from "../../lib/api";
+import { apiBaseUrl, apiRequest } from "../../lib/api";
 import { useRouter } from "next/navigation";
 import { ProtectedRoute } from "../../components/ProtectedRoute";
 import { AuditListTable, AuditSummaryRow } from "../../components/AuditListTable";
+import { logError } from "../../utils/errorHandler";
 
 function DashboardPageInner() {
   const router = useRouter();
   const [audits, setAudits] = useState<AuditSummaryRow[]>([]);
 
   useEffect(() => {
-    const token = window.localStorage.getItem("kamu-token");
-    if (!token) {
-      router.push("/");
-      return;
-    }
     (async () => {
       try {
-        const res = await authorizedFetch(`${apiBaseUrl}/api/Audits`);
-        if (!res.ok) return;
-        const data = await res.json();
-        setAudits(data as AuditSummaryRow[]);
-      } catch {
-        // ignore for now
+        const data = await apiRequest<AuditSummaryRow[]>(`${apiBaseUrl}/api/Audits`);
+        setAudits(data);
+      } catch (error) {
+        // apiRequest already logged + toasted; just add scoped log entry.
+        logError(error, { scope: "Dashboard.loadAudits" });
       }
     })();
   }, [router]);

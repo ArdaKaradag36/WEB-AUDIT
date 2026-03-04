@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiBaseUrl, authorizedFetch } from "../lib/api";
+import { apiBaseUrl, apiRequest } from "../lib/api";
+import { logError } from "../utils/errorHandler";
 import { StatusBadge } from "./StatusBadge";
 
 interface AuditSummary {
@@ -30,12 +31,11 @@ export function AuditSidebar({ currentId }: Props) {
   useEffect(() => {
     (async () => {
       try {
-        const res = await authorizedFetch(`${apiBaseUrl}/api/Audits`);
-        if (!res.ok) return;
-        const data = await res.json();
-        setAudits(data as AuditSummary[]);
-      } catch {
-        // yut
+        const data = await apiRequest<AuditSummary[]>(`${apiBaseUrl}/api/Audits`);
+        setAudits(data);
+      } catch (error) {
+        // apiRequest already emitted a toast; just record scope here.
+        logError(error, { scope: "AuditSidebar.loadAudits" });
       }
     })();
   }, []);

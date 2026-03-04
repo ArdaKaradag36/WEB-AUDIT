@@ -16,6 +16,7 @@ import {
   saveProfileSettings,
   saveRunnerSettings
 } from "../../lib/settingsStorage";
+import { logError, registerToastListener } from "../../utils/errorHandler";
 
 type ToastState = { message: string; type: "success" | "error" } | null;
 
@@ -54,6 +55,17 @@ function SettingsInner() {
   const [savingNotifications, setSavingNotifications] = useState(false);
 
   const { toast, show } = useToast();
+
+  useEffect(() => {
+    const listener = (message: string, level: "success" | "error" | "info" | "warning") => {
+      const mappedType = level === "success" ? "success" : "error";
+      show(message, mappedType);
+    };
+    registerToastListener(listener);
+    return () => {
+      registerToastListener(() => {});
+    };
+  }, [show]);
 
   useEffect(() => {
     (async () => {
@@ -111,7 +123,8 @@ function SettingsInner() {
       await saveProfileSettings(profile);
       setInitialProfile(profile);
       show("Profil ayarları güncellendi.", "success");
-    } catch {
+    } catch (error) {
+      logError(error, { scope: "Settings.saveProfile" });
       show("Profil ayarları kaydedilemedi.", "error");
     } finally {
       setSavingProfile(false);
@@ -129,7 +142,8 @@ function SettingsInner() {
       await saveRunnerSettings(runner);
       setInitialRunner(runner);
       show("Runner ayarları güncellendi.", "success");
-    } catch {
+    } catch (error) {
+      logError(error, { scope: "Settings.saveRunner" });
       show("Runner ayarları kaydedilemedi.", "error");
     } finally {
       setSavingRunner(false);
@@ -155,7 +169,8 @@ function SettingsInner() {
       await saveNotificationSettings(notifications);
       setInitialNotifications(notifications);
       show("Bildirim tercihleri güncellendi.", "success");
-    } catch {
+    } catch (error) {
+      logError(error, { scope: "Settings.saveNotifications" });
       show("Bildirim tercihleri kaydedilemedi.", "error");
     } finally {
       setSavingNotifications(false);

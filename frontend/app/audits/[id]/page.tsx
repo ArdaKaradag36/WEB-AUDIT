@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { apiBaseUrl, authorizedFetch } from "../../../lib/api";
+import { apiBaseUrl, apiRequest } from "../../../lib/api";
 import { ProtectedRoute } from "../../../components/ProtectedRoute";
 import { AuditSidebar } from "../../../components/AuditSidebar";
 import { StatusBadge } from "../../../components/StatusBadge";
@@ -46,20 +46,19 @@ function AuditDetailInner() {
     if (!id) return;
     (async () => {
       try {
-        const [detailRes, findingsRes, gapsRes] = await Promise.all([
-          authorizedFetch(`${apiBaseUrl}/api/Audits/${id}`),
-          authorizedFetch(`${apiBaseUrl}/api/Audits/${id}/findings?page=1&pageSize=20`),
-          authorizedFetch(`${apiBaseUrl}/api/Audits/${id}/gaps?page=1&pageSize=20`)
+        const [detail, findingsPage, gapsPage] = await Promise.all([
+          apiRequest<AuditDetail>(`${apiBaseUrl}/api/Audits/${id}`),
+          apiRequest<{ items: FindingDto[] }>(
+            `${apiBaseUrl}/api/Audits/${id}/findings?page=1&pageSize=20`
+          ),
+          apiRequest<{ items: GapDto[] }>(
+            `${apiBaseUrl}/api/Audits/${id}/gaps?page=1&pageSize=20`
+          )
         ]);
 
-        if (!detailRes.ok) throw new Error("Audit bulunamadı.");
-        const d = await detailRes.json();
-        const f = findingsRes.ok ? await findingsRes.json() : { items: [] };
-        const g = gapsRes.ok ? await gapsRes.json() : { items: [] };
-
-        setDetail(d as AuditDetail);
-        setFindings((f.items ?? []) as FindingDto[]);
-        setGaps((g.items ?? []) as GapDto[]);
+        setDetail(detail);
+        setFindings((findingsPage.items ?? []) as FindingDto[]);
+        setGaps((gapsPage.items ?? []) as GapDto[]);
       } catch (err: any) {
         setError(err.message ?? "Yüklenirken hata oluştu.");
       }

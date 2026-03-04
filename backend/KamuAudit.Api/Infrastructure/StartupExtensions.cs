@@ -208,12 +208,12 @@ public static class StartupExtensions
         app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
         {
             Predicate = c => c.Tags.Contains("live")
-        });
+        }).ExcludeFromDescription();
 
         app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
         {
             Predicate = c => c.Tags.Contains("ready")
-        });
+        }).ExcludeFromDescription();
 
         app.MapGet("/metrics", async (KamuAuditDbContext db, CancellationToken ct) =>
         {
@@ -260,7 +260,7 @@ public static class StartupExtensions
             sb.AppendLine($"audit_run_duration_ms_sum {snapshot.RunDurationSumMs}");
 
             return sb.ToString();
-        }).AllowAnonymous();
+        }).AllowAnonymous().ExcludeFromDescription();
 
         return app;
     }

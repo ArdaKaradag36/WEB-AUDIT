@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiBaseUrl } from "../../lib/api";
+import { captureUnexpectedError } from "../../utils/errorHandler";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -40,9 +41,11 @@ export default function LoginPage() {
       }
       const body = await res.json();
       const token = body.token as string;
-      window.localStorage.setItem("kamu-token", token);
+      // Access token is now kept in memory (see useAuth); here we only navigate.
+      // Local storage usage is intentionally removed for security.
       router.push("/dashboard");
     } catch (err: any) {
+      captureUnexpectedError(err, { scope: "LoginPage.handleSubmit" });
       setError(err.message ?? "Bilinmeyen hata.");
     } finally {
       setLoading(false);

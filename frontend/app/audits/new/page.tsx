@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiBaseUrl, authorizedFetch } from "../../../lib/api";
+import { apiBaseUrl, apiRequest } from "../../../lib/api";
+import { logError } from "../../../utils/errorHandler";
 import { ProtectedRoute } from "../../../components/ProtectedRoute";
 import { AuditListTable, AuditSummaryRow } from "../../../components/AuditListTable";
 
@@ -18,19 +19,12 @@ function NewAuditPageInner() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = window.localStorage.getItem("kamu-token");
-    if (!token) {
-      router.push("/");
-      return;
-    }
     (async () => {
       try {
-        const res = await authorizedFetch(`${apiBaseUrl}/api/Audits`);
-        if (!res.ok) return;
-        const data = await res.json();
-        setAudits(data as AuditSummaryRow[]);
-      } catch {
-        // ignore
+        const data = await apiRequest<AuditSummaryRow[]>(`${apiBaseUrl}/api/Audits`);
+        setAudits(data);
+      } catch (error) {
+        logError(error, { scope: "NewAuditPage.loadAudits" });
       }
     })();
   }, [router]);
@@ -40,10 +34,6 @@ function NewAuditPageInner() {
     setError(null);
     setLoading(true);
     try {
-      const endpoint = useCredentials
-        ? `${apiBaseUrl}/api/Audits/with-credentials`
-        : `${apiBaseUrl}/api/Audits`;
-
       const body = useCredentials
         ? {
             audit: { targetUrl: url },
@@ -53,18 +43,16 @@ function NewAuditPageInner() {
           }
         : { targetUrl: url };
 
-      const res = await authorizedFetch(endpoint, {
+      const endpoint = useCredentials
+        ? `${apiBaseUrl}/api/Audits/with-credentials`
+        : `${apiBaseUrl}/api/Audits`;
+
+      const created = await apiRequest<AuditSummaryRow>(endpoint, {
         method: "POST",
-        body: JSON.stringify(body),
-        headers: { "Content-Type": "application/json" }
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
       });
 
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Denetim oluşturulamadı.");
-      }
-
-      const created = (await res.json()) as AuditSummaryRow;
       setAudits(prev => [created, ...prev]);
       setUrl("");
       setUsername("");

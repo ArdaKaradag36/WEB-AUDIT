@@ -77,6 +77,7 @@ async function main(): Promise<0 | 1 | 2> {
   const runId = uuidv4();
   const defaultOut = path.join("reports", "runs", runId);
   const outDir = getArg("--out") ?? defaultOut;
+  const tempDir = path.join(outDir, ".tmp");
   const linkLimit = Number(getArg("--max-links") ?? getArg("--linkLimit") ?? "20");
   const headless = getBoolArg("--headless", true);
   const safeMode = getBoolArg("--safe-mode", true);
@@ -107,7 +108,10 @@ async function main(): Promise<0 | 1 | 2> {
     config.clickAllowlist = getCsvArg("--click-allowlist");
   }
 
-  fs.mkdirSync(outDir, { recursive: true });
+  // All artifacts are written into a temp directory first and only moved
+  // into the final run directory once execution completes successfully.
+  fs.rmSync(tempDir, { recursive: true, force: true });
+  fs.mkdirSync(tempDir, { recursive: true });
 
   const startedAt = new Date().toISOString();
   const finishedAt = () => new Date().toISOString();
@@ -159,7 +163,7 @@ async function main(): Promise<0 | 1 | 2> {
       meta: { durationMs: duration, title },
     });
   } catch (e: any) {
-    const shotPath = artifactPathInRun(outDir, "homepage_open_fail.png");
+    const shotPath = artifactPathInRun(tempDir, "homepage_open_fail.png");
     try {
       await page.screenshot({ path: shotPath, fullPage: true });
     } catch {}
@@ -176,7 +180,7 @@ async function main(): Promise<0 | 1 | 2> {
 
   // Homepage açılmadıysa erken çık
   if (!homepageLoaded) {
-    const tracePath = artifactPathInRun(outDir, "trace.zip");
+    const tracePath = artifactPathInRun(tempDir, "trace.zip");
     await context.tracing.stop({ path: tracePath });
     addArtifact(artifacts, "TRACE", tracePath);
 
@@ -197,7 +201,7 @@ async function main(): Promise<0 | 1 | 2> {
       summary: summarize(results),
     };
 
-    writeJsonReport(outDir, report);
+    writeJsonReport(tempDir, report);
     printSummary(report);
     console.log("\nRun dir:", outDir);
     return 1; // crash
@@ -206,7 +210,7 @@ async function main(): Promise<0 | 1 | 2> {
   // 0) BLOCKED tespiti
   const hasCaptcha = await detectCaptcha(page);
   if (hasCaptcha) {
-    const shotPath = artifactPathInRun(outDir, "blocked_captcha.png");
+    const shotPath = artifactPathInRun(tempDir, "blocked_captcha.png");
     try {
       await page.screenshot({ path: shotPath, fullPage: true });
     } catch {}
@@ -225,7 +229,7 @@ async function main(): Promise<0 | 1 | 2> {
 
   const loginRequired = await detectLogin(page);
   if (loginRequired) {
-    const shotPath = artifactPathInRun(outDir, "blocked_login.png");
+    const shotPath = artifactPathInRun(tempDir, "blocked_login.png");
     try {
       await page.screenshot({ path: shotPath, fullPage: true });
     } catch {}
@@ -261,7 +265,7 @@ async function main(): Promise<0 | 1 | 2> {
     const pctx: PluginContext = {
       runId,
       targetUrl,
-      outDir,
+      outDir: tempDir,
       page,
       context,
       results,
@@ -295,7 +299,7 @@ async function main(): Promise<0 | 1 | 2> {
     try {
       await runUiHeuristics({
         page,
-        outDir,
+          outDir: tempDir,
         results,
         artifacts,
         options: { sampleLimit: 20, a11yStrict: strict },
@@ -324,7 +328,7 @@ async function main(): Promise<0 | 1 | 2> {
         await runSpecFile({
           specPath: resolvedSpecPath,
           page,
-          outDir,
+          outDir: tempDir,
           results,
           artifacts,
         });
@@ -590,9 +594,9 @@ async function main(): Promise<0 | 1 | 2> {
   const evidence: Evidence = {
     screenshot: artifacts.find((a) => a.type === "SCREENSHOT")?.path,
     trace: artifacts.find((a) => a.type === "TRACE")?.path,
-    consoleLogPath: path.join(outDir, "console.json"),
-    networkLogPath: path.join(outDir, "network.json"),
-    requestFailedPath: path.join(outDir, "request_failed.json"),
+    consoleLogPath: path.join(tempDir, "console.json"),
+    networkLogPath: path.join(tempDir, "network.json"),
+    requestFailedPath: path.join(tempDir, "request_failed.json"),
   };
   const sm = uiInventory?.scrollMetrics;
   const uiCoverage: UiCoverageSummary = {
@@ -646,7 +650,7 @@ async function main(): Promise<0 | 1 | 2> {
   };
 
   writeRunReports({
-    runDir: outDir,
+    runDir: tempDir,
     summary: summaryReport,
     uiInventory,
     gaps,
@@ -665,8 +669,8 @@ async function main(): Promise<0 | 1 | 2> {
         targetUrl,
       });
       if (suggestions.length > 0) {
-        const written = writeGeneratedTests(outDir, suggestions);
-        console.log("Generated test skeletons (review required):", written.length, "files in", path.join(outDir, "generated", "tests"));
+        const written = writeGeneratedTests(tempDir, suggestions);
+        console.log("Generated test skeletons (review required):", written.length, "files in", path.join(tempDir, "generated", "tests"));
       }
     } catch (e: any) {
       console.warn("AI provider / generated tests failed:", e?.message);
@@ -687,7 +691,24 @@ async function main(): Promise<0 | 1 | 2> {
     summary: summarize(results),
   };
 
-  writeJsonReport(outDir, report);
+  writeJsonReport(tempDir, report);
+
+  // Finalize: move temp directory to final run directory and write completion marker.
+  fs.rmSync(outDir, { recursive: true, force: true });
+  fs.mkdirSync(path.dirname(outDir), { recursive: true });
+  fs.renameSync(tempDir, outDir);
+
+  const completionMarker = {
+    runId,
+    url: targetUrl,
+    finishedAt: runInfo.finishedAt,
+    status: runInfo.status,
+  };
+  fs.writeFileSync(
+    path.join(outDir, "run.complete.json"),
+    JSON.stringify(completionMarker, null, 2),
+    "utf-8"
+  );
   printSummary(report);
   console.log("\nRun dir:", outDir);
   console.log("summary.json, ui-inventory.json, gaps.json, console.json, network.json, request_failed.json");

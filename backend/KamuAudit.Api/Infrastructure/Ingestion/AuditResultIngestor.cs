@@ -67,6 +67,30 @@ public sealed class AuditResultIngestor : IAuditResultIngestor
             return;
         }
 
+        var completionMarkerPath = Path.Combine(runDirFull, "run.complete.json");
+        if (!File.Exists(completionMarkerPath))
+        {
+            _logger.LogWarning(
+                "Completion marker run.complete.json not found for audit run {AuditRunId} in RunDir {RunDir}. " +
+                "Run will be marked as failed and ingestion skipped.",
+                auditRunId, runDirFull);
+
+            if (string.IsNullOrWhiteSpace(run.LastError))
+            {
+                run.LastError = $"Ingestion skipped: completion marker run.complete.json not found in {runDirFull}.";
+            }
+
+            // For safety, mark the run as failed if it is still in a non-terminal state.
+            if (!string.Equals(run.Status, "failed", StringComparison.OrdinalIgnoreCase))
+            {
+                run.Status = "failed";
+            }
+
+            await _db.SaveChangesAsync(cancellationToken);
+            AuditMetrics.IncrementIngestionFailures();
+            return;
+        }
+
         var summaryPath = Path.Combine(runDirFull, "summary.json");
         var gapsPath = Path.Combine(runDirFull, "gaps.json");
 

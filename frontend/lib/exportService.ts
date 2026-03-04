@@ -1,4 +1,5 @@
 import { apiBaseUrl, authorizedFetch } from "./api";
+import { captureUnexpectedError, showToast } from "../utils/errorHandler";
 
 export interface AuditExportContext {
   auditId: string;
@@ -75,9 +76,10 @@ export async function exportAuditJson(ctx: AuditExportContext) {
     };
     const json = JSON.stringify(payload, null, 2);
     downloadBlob(json, filename, "application/json;charset=utf-8");
-    window.alert("JSON raporu indiriliyor.");
+    showToast("JSON raporu indiriliyor.", "success");
   } catch (err: any) {
-    window.alert(err?.message ?? "JSON raporu indirilemedi.");
+    captureUnexpectedError(err, { scope: "exportAuditJson" });
+    showToast(err?.message ?? "JSON raporu indirilemedi.");
   }
 }
 
@@ -217,7 +219,8 @@ export async function exportFindingsCsv(ctx: AuditExportContext) {
         delete clone.recommendation;
         delete clone.suggestion;
         teknikDetay = JSON.stringify(clone);
-      } catch {
+      } catch (error) {
+        captureUnexpectedError(error, { scope: "exportFindingsCsv.serializeFinding" });
         teknikDetay = "";
       }
 
@@ -248,9 +251,10 @@ export async function exportFindingsCsv(ctx: AuditExportContext) {
     const csvContent = "\uFEFF" + lines.join("\n");
     const filename = `kamu-web-audit_${full.auditId}_bulgular.csv`;
     downloadBlob(csvContent, filename, "text/csv;charset=utf-8");
-    window.alert("CSV dışa aktarıldı.");
+    showToast("CSV dışa aktarıldı.", "success");
   } catch (err: any) {
-    window.alert(err?.message ?? "CSV dışa aktarılamadı.");
+    captureUnexpectedError(err, { scope: "exportFindingsCsv" });
+    showToast(err?.message ?? "CSV dışa aktarılamadı.");
   }
 }
 
@@ -275,15 +279,16 @@ export async function exportAuditTrace(ctx: AuditExportContext) {
 
     const res = await authorizedFetch(absoluteUrl);
     if (!res.ok) {
-      window.alert("Bu denetim için trace bulunamadı.");
+      showToast("Bu denetim için trace bulunamadı.");
       return;
     }
     const blob = await res.blob();
     const filename = `kamu-web-audit_${full.auditId}_trace.zip`;
     downloadBlob(blob, filename, "application/zip");
-    window.alert("Trace indiriliyor…");
+    showToast("Trace indiriliyor…", "success");
   } catch (err: any) {
-    window.alert(err?.message ?? "Trace indirilemedi.");
+    captureUnexpectedError(err, { scope: "exportAuditTrace" });
+    showToast(err?.message ?? "Trace indirilemedi.");
   }
 }
 
@@ -300,11 +305,12 @@ export async function exportAuditPdf(ctx: AuditExportContext) {
         const blob = await res.blob();
         const filename = `kamu-web-audit_${full.auditId}_rapor.pdf`;
         downloadBlob(blob, filename, "application/pdf");
-        window.alert("PDF raporu indiriliyor…");
+        showToast("PDF raporu indiriliyor…", "success");
         usedServerPdf = true;
       }
-    } catch {
-      // ignore and fall back
+    } catch (error) {
+      captureUnexpectedError(error, { scope: "exportAuditPdf.serverPdf" });
+      // fall back to text summary
     }
 
     if (usedServerPdf) return;
@@ -366,9 +372,13 @@ export async function exportAuditPdf(ctx: AuditExportContext) {
     const textContent = lines.join("\n");
     const filename = `kamu-web-audit_${full.auditId}_rapor.txt`;
     downloadBlob(textContent, filename, "text/plain;charset=utf-8");
-    window.alert("PDF yerine özet rapor metni indirildi (sunucu PDF ucu bulunamadı).");
+    showToast(
+      "PDF yerine özet rapor metni indirildi (sunucu PDF ucu bulunamadı).",
+      "success"
+    );
   } catch (err: any) {
-    window.alert(err?.message ?? "PDF raporu indirilemedi.");
+    captureUnexpectedError(err, { scope: "exportAuditPdf" });
+    showToast(err?.message ?? "PDF raporu indirilemedi.");
   }
 }
 

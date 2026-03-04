@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("KamuAudit.Api")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+24fba3a8d19d94cc827b94b1bba8c6b3d79a447c")]
 [assembly: System.Reflection.AssemblyProductAttribute("KamuAudit.Api")]
 [assembly: System.Reflection.AssemblyTitleAttribute("KamuAudit.Api")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
