@@ -110,6 +110,9 @@ public sealed class NodeAuditRunner : IAuditRunner
                 CreateNoWindow = true
             };
 
+            // Propagate audit run id to the runner so that logs can correlate back to the API.
+            psi.Environment["KAMU_AUDIT_RUN_ID"] = run.Id.ToString("N");
+
             if (credential is not null)
             {
                 if (!string.IsNullOrWhiteSpace(credential.Username))

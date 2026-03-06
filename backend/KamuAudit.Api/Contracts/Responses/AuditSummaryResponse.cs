@@ -40,4 +40,9 @@ public sealed class AuditSummaryResponse
 
     /// <summary>Most common gap ReasonCode (human-ready identifier).</summary>
     public string? MostCommonGapReason { get; set; }
+
+    /// <summary>
+    /// Number of findings in this run that were explicitly marked as SKIPPED (e.g. due to network policy).
+    /// </summary>
+    public int SkippedFindings { get; set; }
 }

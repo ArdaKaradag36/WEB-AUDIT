@@ -1,0 +1,1128 @@
+openapi: 3.0.3
+info:
+  title: Kamu Web Audit API
+  version: 1.0.0
+  description: |
+    Public API for the Kamu Web Audit platform (Nessus-like web application security scanner).
+    This specification focuses on Targets, Scans, Findings, Rules Catalog and Auth Profiles.
+
+servers:
+  - url: https://api.kamu-web-audit.example.com
+    description: Production
+  - url: https://staging-api.kamu-web-audit.example.com
+    description: Staging
+
+tags:
+  - name: Targets
+  - name: Scans
+  - name: Findings
+  - name: Rules
+  - name: AuthProfiles
+
+paths:
+  /targets:
+    post:
+      tags: [Targets]
+      summary: Create a new target
+      operationId: createTarget
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TargetCreateRequest'
+      responses:
+        '201':
+          description: Target created
+          headers:
+            Location:
+              description: URL of the created target
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Target'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      security:
+        - bearerAuth: []
+
+    get:
+      tags: [Targets]
+      summary: List targets
+      operationId: listTargets
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: search
+          in: query
+          description: Free-text search on name and baseUrl
+          required: false
+          schema:
+            type: string
+        - name: isActive
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Paged list of targets
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TargetListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      security:
+        - bearerAuth: []
+
+  /api/audits:
+    post:
+      tags: [Scans]
+      summary: Create a new audit run
+      description: |
+        Creates a new audit run for a given target URL.
+        This operation is idempotent when an Idempotency-Key header is provided.
+      operationId: createAudit
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAuditRunRequest'
+      responses:
+        '201':
+          description: Audit run created
+          headers:
+            Location:
+              description: URL of the created audit run
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditRunDetail'
+        '200':
+          description: Existing audit run returned for the same Idempotency-Key and request payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditRunDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      security:
+        - bearerAuth: []
+
+  /scans/{id}:
+    get:
+      tags: [Scans]
+      summary: Get scan by id
+      operationId: getScan
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Scan details
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Scan'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      security:
+        - bearerAuth: []
+
+  /scans/{id}/start:
+    post:
+      tags: [Scans]
+      summary: Start a scan
+      description: Transition the scan to a queued/running state. No body is required.
+      operationId: startScan
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '202':
+          description: Scan accepted for execution
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Scan'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      security:
+        - bearerAuth: []
+
+  /scans/{id}/cancel:
+    post:
+      tags: [Scans]
+      summary: Cancel a scan
+      description: Request cancellation of an in-progress or queued scan.
+      operationId: cancelScan
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '202':
+          description: Cancellation accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Scan'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      security:
+        - bearerAuth: []
+
+  /scans/{id}/findings:
+    get:
+      tags: [Findings]
+      summary: List findings for a scan
+      operationId: listScanFindings
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: severity
+          in: query
+          required: false
+          description: Filter by severity (multiple values allowed)
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/Severity'
+            style: form
+            explode: true
+        - name: category
+          in: query
+          required: false
+          description: Filter by rule category (multiple values allowed)
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/RuleCategory'
+            style: form
+            explode: true
+        - name: url
+          in: query
+          required: false
+          description: Filter findings by normalized URL prefix
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          description: Filter by finding status
+          schema:
+            $ref: '#/components/schemas/FindingStatus'
+      responses:
+        '200':
+          description: Paged list of findings for the scan
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindingListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      security:
+        - bearerAuth: []
+
+  /scans/{id}/report:
+    get:
+      tags: [Scans]
+      summary: Get scan report
+      description: |
+        Returns a detailed report for the scan. The `format` query parameter
+        controls whether the response is JSON or PDF.
+      operationId: getScanReport
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: format
+          in: query
+          required: false
+          description: Report format. Defaults to `json`.
+          schema:
+            type: string
+            enum: [json, pdf]
+            default: json
+      responses:
+        '200':
+          description: Scan report
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanReport'
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      security:
+        - bearerAuth: []
+
+  /auth-profiles:
+    post:
+      tags: [AuthProfiles]
+      summary: Create an auth profile
+      description: Defines login steps / auth flow configuration that can be reused by scans.
+      operationId: createAuthProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthProfileCreateRequest'
+      responses:
+        '201':
+          description: Auth profile created
+          headers:
+            Location:
+              description: URL of the created auth profile
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthProfile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      security:
+        - bearerAuth: []
+
+  /rules-catalog:
+    get:
+      tags: [Rules]
+      summary: List rules in the catalog
+      operationId: listRules
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: severity
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Severity'
+        - name: category
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/RuleCategory'
+        - name: search
+          in: query
+          required: false
+          description: Free-text search on id, title and description
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Paged list of rules
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      security:
+        - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  headers:
+    X-RateLimit-Limit:
+      description: The maximum number of requests allowed in the current window.
+      schema:
+        type: integer
+    X-RateLimit-Remaining:
+      description: The number of requests left for the current window.
+      schema:
+        type: integer
+    X-RateLimit-Reset:
+      description: |
+        The UTC epoch timestamp (in seconds) when the current rate limit window resets.
+      schema:
+        type: integer
+        format: int64
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      required: false
+      description: Page number (1-based)
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: pageSize
+      in: query
+      required: false
+      description: Page size (max 200)
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: |
+        Optional idempotency key for safely retrying POST /api/audits requests.
+        When provided, the server will return the same audit run for duplicate
+        requests with the same key, user and request payload. If the same key is
+        reused with a different payload, the server will respond with 409 Conflict.
+      schema:
+        type: string
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    NotFound:
+      description: Resource not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    Conflict:
+      description: Conflict
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    UnprocessableEntity:
+      description: Validation failure
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    TooManyRequests:
+      description: Rate limit exceeded
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying the request
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    InternalError:
+      description: Internal server error
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+
+  schemas:
+    ProblemDetails:
+      type: object
+      description: RFC 7807 problem+json response
+      properties:
+        type:
+          type: string
+          format: uri
+          example: "https://api.kamu-web-audit.example.com/problems/validation-error"
+        title:
+          type: string
+          example: "One or more validation errors occurred."
+        status:
+          type: integer
+          format: int32
+          example: 400
+        detail:
+          type: string
+        instance:
+          type: string
+          example: "/scans/123"
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+      required:
+        - title
+        - status
+
+    PaginationMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        pageSize:
+          type: integer
+          example: 50
+        totalItems:
+          type: integer
+          example: 123
+        totalPages:
+          type: integer
+          example: 3
+        hasNext:
+          type: boolean
+        hasPrevious:
+          type: boolean
+
+    TargetCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        baseUrl:
+          type: string
+          format: uri
+        riskProfile:
+          type: string
+          enum: [PUBLIC, INTERNAL, HIGH_SENSITIVITY]
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+      required:
+        - name
+        - baseUrl
+
+    Target:
+      type: object
+      properties:
+        id:
+          type: string
+        organizationId:
+          type: string
+          nullable: true
+        projectId:
+          type: string
+          nullable: true
+        name:
+          type: string
+        baseUrl:
+          type: string
+          format: uri
+        riskProfile:
+          type: string
+          enum: [PUBLIC, INTERNAL, HIGH_SENSITIVITY]
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - baseUrl
+
+    TargetListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Target'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    ScanConfig:
+      type: object
+      properties:
+        maxPages:
+          type: integer
+          minimum: 1
+        maxDepth:
+          type: integer
+          minimum: 0
+        maxDurationSeconds:
+          type: integer
+          minimum: 1
+        maxRequests:
+          type: integer
+          minimum: 1
+        authProfileId:
+          type: string
+          nullable: true
+        throttling:
+          type: object
+          properties:
+            maxRps:
+              type: integer
+              minimum: 1
+            maxConcurrentRequests:
+              type: integer
+              minimum: 1
+            politenessDelayMs:
+              type: integer
+              minimum: 0
+        retryPolicy:
+          type: object
+          properties:
+            maxRetries:
+              type: integer
+              minimum: 0
+            backoffStrategy:
+              type: string
+              enum: [NONE, LINEAR, EXPONENTIAL]
+            retryableStatusCodes:
+              type: array
+              items:
+                type: integer
+        rulePacks:
+          type: array
+          items:
+            type: string
+
+    ScanCreateRequest:
+      type: object
+      properties:
+        targetId:
+          type: string
+        config:
+          $ref: '#/components/schemas/ScanConfig'
+        requestedByUserId:
+          type: string
+          nullable: true
+      required:
+        - targetId
+        - config
+
+    ScanStatus:
+      type: string
+      enum: [PENDING, QUEUED, RUNNING, COMPLETED, FAILED, CANCELLED]
+
+    Scan:
+      type: object
+      properties:
+        id:
+          type: string
+        targetId:
+          type: string
+        status:
+          $ref: '#/components/schemas/ScanStatus'
+        config:
+          $ref: '#/components/schemas/ScanConfig'
+        requestedByUserId:
+          type: string
+          nullable: true
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - targetId
+        - status
+
+    Severity:
+      type: string
+      enum: [CRITICAL, HIGH, MEDIUM, LOW, INFO]
+
+    RuleCategory:
+      type: string
+      enum:
+        - SECURITY_HEADER
+        - TLS
+        - COOKIE
+        - XSS
+        - CSRF
+        - AUTHENTICATION
+        - AUTHORIZATION
+        - INPUT_VALIDATION
+        - CONFIGURATION
+        - AVAILABILITY
+        - BEST_PRACTICE
+        - OTHER
+
+    Confidence:
+      type: string
+      enum: [CERTAIN, HIGH, MEDIUM, LOW, UNKNOWN]
+
+    FindingStatus:
+      type: string
+      description: Execution-level status of a finding as produced by the runner.
+      enum: [OK, SKIPPED, FAILED, INFO]
+
+    SkipReason:
+      type: string
+      description: Reason for a finding being marked as SKIPPED or an audit being blocked.
+      enum: [NETWORK_POLICY, RATE_LIMIT, TIMEOUT, AUTH_BLOCKED, ROBOTS, OTHER]
+
+    Finding:
+      type: object
+      properties:
+        id:
+          type: string
+        scanId:
+          type: string
+        ruleId:
+          type: string
+        title:
+          type: string
+        severity:
+          $ref: '#/components/schemas/Severity'
+        confidence:
+          $ref: '#/components/schemas/Confidence'
+        category:
+          $ref: '#/components/schemas/RuleCategory'
+        status:
+          $ref: '#/components/schemas/FindingStatus'
+        skipReason:
+          $ref: '#/components/schemas/SkipReason'
+        url:
+          type: string
+          format: uri
+        parameter:
+          type: string
+        evidenceIds:
+          type: array
+          items:
+            type: string
+        remediation:
+          type: string
+        fingerprint:
+          type: string
+        firstSeenAt:
+          type: string
+          format: date-time
+        lastSeenAt:
+          type: string
+          format: date-time
+        occurrenceCount:
+          type: integer
+      required:
+        - id
+        - scanId
+        - ruleId
+        - title
+        - severity
+        - category
+        - status
+        - url
+        - fingerprint
+
+    FindingListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Finding'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    Rule:
+      type: object
+      properties:
+        id:
+          type: string
+        category:
+          $ref: '#/components/schemas/RuleCategory'
+        severity:
+          $ref: '#/components/schemas/Severity'
+        tags:
+          type: array
+          items:
+            type: string
+        title:
+          type: string
+        description:
+          type: string
+        references:
+          type: array
+          items:
+            type: string
+            format: uri
+        detect:
+          type: string
+        remediate:
+          type: string
+      required:
+        - id
+        - category
+        - severity
+        - title
+
+    RuleListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Rule'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    ScanReport:
+      type: object
+      description: High-level scan report containing summary, findings overview and metrics.
+      properties:
+        scan:
+          $ref: '#/components/schemas/Scan'
+        summary:
+          type: object
+          properties:
+            totalFindings:
+              type: integer
+            bySeverity:
+              type: object
+              additionalProperties:
+                type: integer
+            byCategory:
+              type: object
+              additionalProperties:
+                type: integer
+        metrics:
+          type: object
+          properties:
+            latencySeconds:
+              type: number
+            pagesScanned:
+              type: integer
+            requestsTotal:
+              type: integer
+            requestsFailed:
+              type: integer
+            timeouts:
+              type: integer
+
+    AuditReport:
+      type: object
+      description: Consolidated JSON report for a single audit run.
+      properties:
+        auditRunId:
+          type: string
+          format: uuid
+        targetUrl:
+          type: string
+          format: uri
+        status:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        durationMs:
+          type: integer
+        execSummary:
+          type: object
+          properties:
+            webScore:
+              type: number
+              format: double
+            totalFindings:
+              type: integer
+            critical:
+              type: integer
+            error:
+              type: integer
+            warn:
+              type: integer
+            info:
+              type: integer
+            totalGaps:
+              type: integer
+        coverage:
+          type: object
+          properties:
+            pagesScanned:
+              type: integer
+              nullable: true
+            linkSampled:
+              type: integer
+              nullable: true
+            linkBroken:
+              type: integer
+              nullable: true
+            totalElements:
+              type: integer
+              nullable: true
+            testedElements:
+              type: integer
+              nullable: true
+            coverageRatio:
+              type: number
+              format: double
+              nullable: true
+        findingsBreakdown:
+          type: object
+          properties:
+            bySeverity:
+              type: object
+              additionalProperties:
+                type: integer
+            byCategory:
+              type: object
+              additionalProperties:
+                type: integer
+        topFindings:
+          type: array
+          items:
+            type: object
+            properties:
+              fingerprint:
+                type: string
+              ruleId:
+                type: string
+              title:
+                type: string
+              category:
+                type: string
+              worstSeverity:
+                $ref: '#/components/schemas/Severity'
+              count:
+                type: integer
+        skippedSummary:
+          type: object
+          properties:
+            totalSkipped:
+              type: integer
+            byReason:
+              type: object
+              additionalProperties:
+                type: integer
+        remediationPlan:
+          type: array
+          items:
+            type: object
+            properties:
+              ruleId:
+                type: string
+              title:
+                type: string
+              severity:
+                $ref: '#/components/schemas/Severity'
+              remediation:
+                type: string
+                nullable: true
+              count:
+                type: integer
+        evidenceLinks:
+          type: object
+          properties:
+            traceUrl:
+              type: string
+              format: uri
+              nullable: true
+            screenshotUrls:
+              type: array
+              items:
+                type: string
+                format: uri
+            consoleUrl:
+              type: string
+              format: uri
+              nullable: true
+            networkUrl:
+              type: string
+              format: uri
+              nullable: true
+            requestFailedUrl:
+              type: string
+              format: uri
+              nullable: true
+
+    AuthProfileType:
+      type: string
+      enum: [NONE, FORM_LOGIN, OIDC_DEVICE_FLOW, CUSTOM_SCRIPT]
+
+    AuthProfileCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          $ref: '#/components/schemas/AuthProfileType'
+        config:
+          type: object
+          description: Arbitrary configuration object, depending on type (e.g. form selectors, field mappings).
+          additionalProperties: true
+      required:
+        - name
+        - type
+
+    AuthProfile:
+      allOf:
+        - $ref: '#/components/schemas/AuthProfileCreateRequest'
+        - type: object
+          properties:
+            id:
+              type: string
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+          required:
+            - id
+            - createdAt
+            - updatedAt
+
+security:
+  - bearerAuth: []
+

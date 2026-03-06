@@ -26,6 +26,14 @@ export type Evidence = {
   requestFailedPath?: string;
 };
 
+export type ArtifactManifestItem = {
+  type: string;
+  /** Path of the artifact relative to the run directory. */
+  path: string;
+  sizeBytes?: number;
+  sha256?: string;
+};
+
 export type UiCoverageSummary = {
   totalElements: number;
   testedElements: number;
@@ -64,6 +72,14 @@ export type Metrics = {
   retriedRequests?: number;
   /** Number of requests that still failed after retry (real failures). */
   realFailures?: number;
+  /** Total pages scanned during crawl/audit. */
+  pagesScanned?: number;
+  /** Total HTTP requests observed during the run. */
+  requestsTotal?: number;
+  /** Approximate timeout count (subset of skippedNetwork). */
+  timeouts?: number;
+  /** Findings grouped by severity for quick scoring. */
+  findingsBySeverity?: Record<string, number>;
 };
 
 export type RunMetadata = {
@@ -81,4 +97,6 @@ export type SummaryReport = {
   metrics: Metrics;
   /** Audit trail: environment versions. */
   runMetadata?: RunMetadata;
+  /** Minimal artifact manifest for this run (files under the run directory). */
+  artifacts?: ArtifactManifestItem[];
 };

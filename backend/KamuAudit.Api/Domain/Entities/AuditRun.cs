@@ -7,6 +7,11 @@ public sealed class AuditRun
 {
     public Guid Id { get; set; }
 
+    /// <summary>
+    /// Creation timestamp for ordering and leasing. Set when the run is enqueued.
+    /// </summary>
+    public DateTimeOffset CreatedAt { get; set; }
+
     public Guid? UserId { get; set; }
 
     public User? User { get; set; }
@@ -64,6 +69,15 @@ public sealed class AuditRun
 
     /// <summary>When set, job is re-queued and will only be picked after this time (exponential backoff).</summary>
     public DateTimeOffset? RetryAfterUtc { get; set; }
+
+    /// <summary>Logical owner identifier for the current lease (worker id).</summary>
+    public string? LeaseOwner { get; set; }
+
+    /// <summary>Lease expiry; when in the past, other workers may take over the run (zombie recovery).</summary>
+    public DateTimeOffset? LeaseUntil { get; set; }
+
+    /// <summary>Monotonic version incremented on each new lease acquisition.</summary>
+    public int LeaseVersion { get; set; }
 
     /// <summary>High-level error classification for the last run attempt (nullable for successful runs).</summary>
     public string? ErrorType { get; set; }

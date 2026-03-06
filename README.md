@@ -1,5 +1,7 @@
 ## Kamu Web Audit
 
+Last updated: 2026-03-05
+
 Kamu Web Audit, kamu kurumlarının web sitelerini **tarayıcı tabanlı otomatik denetimlerle** analiz eden bir SaaS ürünüdür.  
 Amaç; güvenlik, teknik sağlık ve UI davranışları hakkında **tekrarlanabilir ve ölçülebilir** raporlar üretmek ve bunları modern bir web arayüzü üzerinden sunmaktır.
 
@@ -203,21 +205,30 @@ Bu adımlar tamamlandığında, frontend arayüzünden URL yapıştırıp audit 
 - CORS, sadece güvenilen frontend origin’lerini (`Cors__AllowedOrigins`) kabul edecek şekilde yapılandırılabilir.
 - `/metrics` ve `/health/*` uçları, Prometheus ve load balancer health check’leri için hazırdır.
 - İç runbook ve indeks dokümanları, `docs/internal` altında tutulur.
+ - PostgreSQL migration’ları için operasyonel playbook: `docs/db/MIGRATIONS_PLAYBOOK.md`
+   - CI, Testcontainers Postgres üzerinde tüm EF migration set’ini her run’da sıfırdan deneyerek **migration dry-run** yapar.
+   - Gerçek staging/prod rehearsal ve apply adımları için `MIGRATIONS_PLAYBOOK.md` içindeki “Staging Rehearsal” bölümüne bakılmalıdır.
 
 ---
 
 ### Dokümantasyon
 
-Public ürün dokümantasyonu:
-
-- `docs/public/SYSTEM_OVERVIEW_TR.md`
-- `docs/public/HOW_IT_WORKS_TR.md`
-- `docs/public/DEPLOYMENT_OVERVIEW_TR.md`
-- `docs/public/SECURITY_OVERVIEW_TR.md`
-
-Daha detaylı iç mimari, test ve operasyon dokümanları için:
-
-- `docs/internal/INDEX_TR.md`
+- **Genel dokümantasyon index’i**: `docs/README.md`
+- **Public ürün dokümantasyonu** (kullanıcı / iş birimi odaklı):
+  - `docs/public/SYSTEM_OVERVIEW_TR.md`
+  - `docs/public/HOW_IT_WORKS_TR.md`
+  - `docs/public/DEPLOYMENT_OVERVIEW_TR.md`
+  - `docs/public/SECURITY_OVERVIEW_TR.md`
+  - `docs/public/SCOPE.md`
+  - `docs/public/USAGE.md`
+- **İç teknik dokümantasyon** (mimari, API, test, güvenlik):
+  - `docs/internal/ARCHITECTURE.md`
+  - `docs/internal/API.md`
+  - `docs/internal/QA.md`
+  - `docs/security/SECURITY.md`
+  - `docs/ops/OBSERVABILITY.md`
+  - `docs/ci/CI.md`
+  - `docs/ui/UI_SPEC.md`
 
 ---
 

@@ -4,6 +4,7 @@ using KamuAudit.Api.Infrastructure.Monitoring;
 using KamuAudit.Api.Infrastructure.Persistence;
 using KamuAudit.Api.Infrastructure.Runner;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
@@ -119,12 +120,21 @@ public static class StartupExtensions
                     retryAfterSeconds = (int)Math.Ceiling(retryAfter.TotalSeconds);
                 }
 
-                httpContext.Response.StatusCode = Microsoft.AspNetCore.Http.StatusCodes.Status429TooManyRequests;
+                httpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
                 httpContext.Response.Headers["Retry-After"] = retryAfterSeconds.ToString();
-                httpContext.Response.ContentType = "application/json";
 
-                var payload = $"{{\"error\":\"rate_limited\",\"retryAfterSeconds\":{retryAfterSeconds}}}";
-                await httpContext.Response.WriteAsync(payload, token);
+                var factory = httpContext.RequestServices.GetRequiredService<ProblemDetailsFactory>();
+                var problem = factory.CreateProblemDetails(
+                    httpContext,
+                    statusCode: StatusCodes.Status429TooManyRequests,
+                    title: "Too Many Requests",
+                    detail: "Rate limit exceeded. Please retry after the specified delay.",
+                    instance: path);
+                problem.Extensions["errorCode"] = "RATE_LIMITED";
+                problem.Extensions["retryAfterSeconds"] = retryAfterSeconds;
+
+                httpContext.Response.ContentType = "application/problem+json";
+                await httpContext.Response.WriteAsJsonAsync(problem, token);
             };
 
             options.AddPolicy("AuthPolicy", httpContext =>
@@ -233,10 +243,10 @@ public static class StartupExtensions
             sb.AppendLine("# TYPE audit_running_count gauge");
             sb.AppendLine($"audit_running_count {running}");
 
-            sb.AppendLine("# HELP audit_runs_completed_total Total completed runs");
-            sb.AppendLine("# TYPE audit_runs_completed_total counter");
-            sb.AppendLine($"audit_runs_completed_total{{status=\"completed\"}} {completed}");
-            sb.AppendLine($"audit_runs_completed_total{{status=\"failed\"}} {failed}");
+            sb.AppendLine("# HELP audit_runs_total Total audit runs by final status");
+            sb.AppendLine("# TYPE audit_runs_total counter");
+            sb.AppendLine($"audit_runs_total{{status=\"completed\"}} {completed}");
+            sb.AppendLine($"audit_runs_total{{status=\"failed\"}} {failed}");
 
             sb.AppendLine("# HELP audit_runs_started_total Total number of audit run attempts started");
             sb.AppendLine("# TYPE audit_runs_started_total counter");
@@ -258,6 +268,48 @@ public static class StartupExtensions
             sb.AppendLine("# TYPE audit_run_duration_ms summary");
             sb.AppendLine($"audit_run_duration_ms_count {snapshot.RunDurationCount}");
             sb.AppendLine($"audit_run_duration_ms_sum {snapshot.RunDurationSumMs}");
+
+            sb.AppendLine("# HELP api_request_duration_seconds Duration of API HTTP requests in seconds");
+            sb.AppendLine("# TYPE api_request_duration_seconds summary");
+            sb.AppendLine($"api_request_duration_seconds_count {snapshot.ApiRequestDurationCount}");
+            sb.AppendLine($"api_request_duration_seconds_sum {snapshot.ApiRequestDurationSumMs / 1000.0:F6}");
+
+            sb.AppendLine("# HELP ingestion_duration_seconds Duration of audit result ingestion in seconds");
+            sb.AppendLine("# TYPE ingestion_duration_seconds summary");
+            sb.AppendLine($"ingestion_duration_seconds_count {snapshot.IngestionDurationCount}");
+            sb.AppendLine($"ingestion_duration_seconds_sum {snapshot.IngestionDurationSumMs / 1000.0:F6}");
+
+            sb.AppendLine("# HELP idempotency_conflicts_total Total number of idempotency-key conflicts");
+            sb.AppendLine("# TYPE idempotency_conflicts_total counter");
+            sb.AppendLine($"idempotency_conflicts_total {snapshot.IdempotencyConflictsTotal}");
+
+            sb.AppendLine("# HELP runner_audit_duration_ms Duration of runner audits in milliseconds");
+            sb.AppendLine("# TYPE runner_audit_duration_ms summary");
+            sb.AppendLine($"runner_audit_duration_ms_count {snapshot.RunDurationCount}");
+            sb.AppendLine($"runner_audit_duration_ms_sum {snapshot.RunDurationSumMs}");
+
+            sb.AppendLine("# HELP runner_pages_scanned_total Total pages scanned by runner");
+            sb.AppendLine("# TYPE runner_pages_scanned_total counter");
+            sb.AppendLine($"runner_pages_scanned_total {snapshot.RunnerPagesScannedTotal}");
+
+            sb.AppendLine("# HELP runner_requests_total Total HTTP requests observed by runner");
+            sb.AppendLine("# TYPE runner_requests_total counter");
+            sb.AppendLine($"runner_requests_total {snapshot.RunnerRequestsTotal}");
+
+            sb.AppendLine("# HELP runner_requests_failed_total Total failed HTTP requests observed by runner");
+            sb.AppendLine("# TYPE runner_requests_failed_total counter");
+            sb.AppendLine($"runner_requests_failed_total {snapshot.RunnerRequestsFailedTotal}");
+
+            sb.AppendLine("# HELP runner_skipped_network_total Total network operations skipped by policy in runner");
+            sb.AppendLine("# TYPE runner_skipped_network_total counter");
+            sb.AppendLine($"runner_skipped_network_total{{reason=\"NETWORK_POLICY\"}} {snapshot.RunnerSkippedNetworkTotal}");
+
+            sb.AppendLine("# HELP runner_findings_total Total findings emitted by runner, by severity");
+            sb.AppendLine("# TYPE runner_findings_total counter");
+            foreach (var kv in snapshot.RunnerFindingsBySeverity)
+            {
+                sb.AppendLine($"runner_findings_total{{severity=\"{kv.Key}\"}} {kv.Value}");
+            }
 
             return sb.ToString();
         }).AllowAnonymous().ExcludeFromDescription();

@@ -1,10 +1,9 @@
 {
-  "/dashboard/page": "app/dashboard/page.js",
-  "/audits/[id]/page": "app/audits/[id]/page.js",
-  "/reports/page": "app/reports/page.js",
-  "/settings/page": "app/settings/page.js",
-  "/audits/new/page": "app/audits/new/page.js",
   "/page": "app/page.js",
-  "/support/page": "app/support/page.js",
-  "/docs/page": "app/docs/page.js"
+  "/login/page": "app/login/page.js",
+  "/docs/page": "app/docs/page.js",
+  "/settings/page": "app/settings/page.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/audits/new/page": "app/audits/new/page.js",
+  "/reports/page": "app/reports/page.js"
 }

@@ -1,4 +1,4 @@
-using Xunit;
+using System.Diagnostics;
 using KamuAudit.Api.Domain.Entities;
 using KamuAudit.Api.Infrastructure.Ingestion;
 using KamuAudit.Api.Infrastructure.Persistence;
@@ -6,38 +6,67 @@ using KamuAudit.Api.Infrastructure.Runner;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Xunit;
 
 namespace KamuAudit.Tests;
 
-public class AuditResultIngestorTests : IDisposable
+/// <summary>
+/// Tests for the finding deduplication pipeline in <see cref="AuditResultIngestor"/>.
+/// Uses Testcontainers PostgreSQL to mirror production behavior (no InMemory provider).
+/// </summary>
+[Collection("postgres-ingestion")]
+public sealed class AuditResultIngestorTests
 {
-    private readonly string _runDir;
-    private readonly KamuAuditDbContext _db;
+    private readonly PostgresIngestionFixture _fixture;
 
-    public AuditResultIngestorTests()
+    public AuditResultIngestorTests(PostgresIngestionFixture fixture)
     {
-        _runDir = Path.Combine(Path.GetTempPath(), "KamuAuditTests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(_runDir);
-
-        var options = new DbContextOptionsBuilder<KamuAuditDbContext>()
-            .UseInMemoryDatabase(databaseName: "IngestorTests_" + Guid.NewGuid().ToString("N"))
-            .Options;
-        _db = new KamuAuditDbContext(options);
-        _db.Database.EnsureCreated();
+        _fixture = fixture;
     }
 
-    public void Dispose()
+    private static (KamuAuditDbContext Db, string WorkingRoot) CreateDbAndWorkingDir(PostgresIngestionFixture fixture)
     {
-        try { if (Directory.Exists(_runDir)) Directory.Delete(_runDir, recursive: true); } catch { /* ignore */ }
+        var db = fixture.CreateContext(resetDatabase: true);
+
+        var workingRoot = Path.Combine(Path.GetTempPath(), "KamuAuditIngestorTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(workingRoot);
+
+        return (db, workingRoot);
+    }
+
+    private static AuditResultIngestor CreateIngestor(KamuAuditDbContext db, string workingRoot)
+    {
+        var options = Options.Create(new AuditRunnerOptions
+        {
+            // Absolute path so Path.Combine(AppContext.BaseDirectory, WorkingDirectory) resolves correctly.
+            WorkingDirectory = workingRoot
+        });
+
+        var activitySource = new ActivitySource("KamuAudit.Tests.Ingestion");
+        return new AuditResultIngestor(db, options, NullLogger<AuditResultIngestor>.Instance, activitySource);
+    }
+
+    private static string PrepareRunDirectory(string workingRoot, out string runDirRelative)
+    {
+        runDirRelative = Guid.NewGuid().ToString("N");
+        var runDirFull = Path.Combine(workingRoot, runDirRelative);
+        Directory.CreateDirectory(runDirFull);
+
+        // Completion marker is required by IngestAsync.
+        File.WriteAllText(Path.Combine(runDirFull, "run.complete.json"), """{"status":"completed"}""");
+        return runDirFull;
     }
 
     [Fact]
-    public async Task IngestAsync_parses_summary_and_gaps_and_persists()
+    public async Task Same_fingerprint_reuses_template_and_creates_multiple_instances()
     {
+        var (db, workingRoot) = CreateDbAndWorkingDir(_fixture);
+        using var _ = db;
+
+        var runDirFull = PrepareRunDirectory(workingRoot, out var runDirRelative);
         var auditId = Guid.NewGuid();
-        var workingDir = Path.GetDirectoryName(_runDir)!;
-        var runDirRelative = Path.GetFileName(_runDir);
-        _db.AuditRuns.Add(new AuditRun
+
+        db.AuditRuns.Add(new AuditRun
         {
             Id = auditId,
             TargetUrl = "https://example.com",
@@ -45,40 +74,53 @@ public class AuditResultIngestorTests : IDisposable
             RunDir = runDirRelative,
             Plugins = "[]"
         });
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
 
-        File.WriteAllText(Path.Combine(_runDir, "summary.json"), """
-            {"run":{},"findings":[{"ruleId":"r1","severity":"error","category":"console","title":"E","detail":"D"}],"metrics":{"durationMs":1000}}
-            """);
-        File.WriteAllText(Path.Combine(_runDir, "gaps.json"), """
-            {"gaps":[{"elementId":"el1","humanName":"Btn","reasonCode":"NOT_VISIBLE","riskLevel":"safe","recommendedScript":"click"}]}
+        // Two identical findings -> same fingerprint.
+        File.WriteAllText(
+            Path.Combine(runDirFull, "summary.json"),
+            """
+            {
+              "run": {},
+              "findings": [
+                { "ruleId": "R1", "severity": "info", "category": "test", "title": "Same", "detail": "Det" },
+                { "ruleId": "R1", "severity": "info", "category": "test", "title": "Same", "detail": "Det" }
+              ],
+              "metrics": {}
+            }
             """);
 
-        var runnerOptions = Options.Create(new AuditRunnerOptions { WorkingDirectory = workingDir });
-        var ingestor = new AuditResultIngestor(_db, runnerOptions, NullLogger<AuditResultIngestor>.Instance);
+        // gaps.json optional here; we focus on findings/templates.
+        File.WriteAllText(
+            Path.Combine(runDirFull, "gaps.json"),
+            """{"gaps":[]}""");
+
+        var ingestor = CreateIngestor(db, workingRoot);
 
         await ingestor.IngestAsync(auditId);
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
 
-        var findings = await _db.Findings.Where(f => f.AuditRunId == auditId).ToListAsync();
-        var gaps = await _db.Gaps.Where(g => g.AuditRunId == auditId).ToListAsync();
+        var templates = await db.FindingTemplates.AsNoTracking().ToListAsync();
+        var instances = await db.FindingInstances.AsNoTracking().ToListAsync();
+        var findings = await db.Findings.AsNoTracking().Where(f => f.AuditRunId == auditId).ToListAsync();
 
-        Assert.Single(findings);
-        Assert.Equal("r1", findings[0].RuleId);
-        Assert.Equal("error", findings[0].Severity);
-        Assert.Single(gaps);
-        Assert.Equal("el1", gaps[0].ElementId);
-        Assert.Equal("safe", gaps[0].RiskLevel);
+        Assert.Equal(2, findings.Count);
+        Assert.Single(templates);
+        Assert.Equal(2, templates[0].OccurrenceCount);
+        Assert.Equal(2, instances.Count);
+        Assert.All(instances, i => Assert.Equal(templates[0].Id, i.FindingTemplateId));
     }
 
     [Fact]
-    public async Task IngestAsync_is_idempotent_second_run_replaces_data()
+    public async Task Different_parameter_creates_distinct_templates()
     {
-        var auditId = Guid.NewGuid();
-        var workingDir = Path.GetDirectoryName(_runDir)!;
-        var runDirRelative = Path.GetFileName(_runDir);
+        var (db, workingRoot) = CreateDbAndWorkingDir(_fixture);
+        using var _ = db;
 
-        _db.AuditRuns.Add(new AuditRun
+        var runDirFull = PrepareRunDirectory(workingRoot, out var runDirRelative);
+        var auditId = Guid.NewGuid();
+
+        db.AuditRuns.Add(new AuditRun
         {
             Id = auditId,
             TargetUrl = "https://example.com",
@@ -86,75 +128,51 @@ public class AuditResultIngestorTests : IDisposable
             RunDir = runDirRelative,
             Plugins = "[]"
         });
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
 
-        File.WriteAllText(Path.Combine(_runDir, "summary.json"), """{"run":{},"findings":[{"ruleId":"r1","severity":"info","category":"x","title":"T","detail":""}],"metrics":{}}""");
-        File.WriteAllText(Path.Combine(_runDir, "gaps.json"), """{"gaps":[{"elementId":"e1","reasonCode":"UNKNOWN","riskLevel":"safe"}]}""");
+        // Same rule/title but different meta.parameter -> different fingerprints.
+        File.WriteAllText(
+            Path.Combine(runDirFull, "summary.json"),
+            """
+            {
+              "run": {},
+              "findings": [
+                { "ruleId": "R2", "severity": "info", "category": "test", "title": "Param", "detail": "Det", "meta": { "parameter": "p1" } },
+                { "ruleId": "R2", "severity": "info", "category": "test", "title": "Param", "detail": "Det", "meta": { "parameter": "p2" } }
+              ],
+              "metrics": {}
+            }
+            """);
 
-        var runnerOptions = Options.Create(new AuditRunnerOptions { WorkingDirectory = workingDir });
-        var ingestor = new AuditResultIngestor(_db, runnerOptions, NullLogger<AuditResultIngestor>.Instance);
+        File.WriteAllText(
+            Path.Combine(runDirFull, "gaps.json"),
+            """{"gaps":[]}""");
+
+        var ingestor = CreateIngestor(db, workingRoot);
 
         await ingestor.IngestAsync(auditId);
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
 
-        var count1 = await _db.Findings.CountAsync(f => f.AuditRunId == auditId);
+        var templates = await db.FindingTemplates.AsNoTracking().OrderBy(t => t.Parameter).ToListAsync();
+        var instances = await db.FindingInstances.AsNoTracking().OrderBy(i => i.Parameter).ToListAsync();
 
-        await ingestor.IngestAsync(auditId);
-        await _db.SaveChangesAsync();
+        Assert.Equal(2, templates.Count);
+        Assert.All(templates, t => Assert.Equal(1, t.OccurrenceCount));
 
-        var count2 = await _db.Findings.CountAsync(f => f.AuditRunId == auditId);
-
-        Assert.Equal(1, count1);
-        Assert.Equal(1, count2);
+        Assert.Equal(new[] { "p1", "p2" }, templates.Select(t => t.Parameter).ToArray());
+        Assert.Equal(new[] { "p1", "p2" }, instances.Select(i => i.Parameter).ToArray());
     }
 
     [Fact]
-    public async Task IngestAsync_does_not_touch_existing_data_when_summary_missing()
+    public async Task Duplicate_findings_in_same_run_produce_correct_occurrence_and_instance_counts()
     {
+        var (db, workingRoot) = CreateDbAndWorkingDir(_fixture);
+        using var _ = db;
+
+        var runDirFull = PrepareRunDirectory(workingRoot, out var runDirRelative);
         var auditId = Guid.NewGuid();
-        var workingDir = Path.GetDirectoryName(_runDir)!;
-        var runDirRelative = Path.GetFileName(_runDir);
 
-        var run = new AuditRun
-        {
-            Id = auditId,
-            TargetUrl = "https://example.com",
-            Status = "completed",
-            RunDir = runDirRelative,
-            Plugins = "[]"
-        };
-        _db.AuditRuns.Add(run);
-
-        // Existing DB data that must be preserved
-        _db.Findings.Add(new Finding { Id = Guid.NewGuid(), AuditRunId = auditId, RuleId = "existing", Severity = "info", Category = "x", Title = "t", Detail = "" });
-        _db.Gaps.Add(new Gap { Id = Guid.NewGuid(), AuditRunId = auditId, ElementId = "e-existing", ReasonCode = "EXISTING", RiskLevel = "safe" });
-        await _db.SaveChangesAsync();
-
-        // No summary.json present
-
-        var runnerOptions = Options.Create(new AuditRunnerOptions { WorkingDirectory = workingDir });
-        var ingestor = new AuditResultIngestor(_db, runnerOptions, NullLogger<AuditResultIngestor>.Instance);
-
-        await ingestor.IngestAsync(auditId);
-        await _db.SaveChangesAsync();
-
-        var findings = await _db.Findings.Where(f => f.AuditRunId == auditId).ToListAsync();
-        var gaps = await _db.Gaps.Where(g => g.AuditRunId == auditId).ToListAsync();
-
-        Assert.Single(findings);
-        Assert.Equal("existing", findings[0].RuleId);
-        Assert.Single(gaps);
-        Assert.Equal("e-existing", gaps[0].ElementId);
-    }
-
-    [Fact]
-    public async Task IngestAsync_preserves_existing_gaps_when_gaps_json_missing()
-    {
-        var auditId = Guid.NewGuid();
-        var workingDir = Path.GetDirectoryName(_runDir)!;
-        var runDirRelative = Path.GetFileName(_runDir);
-
-        _db.AuditRuns.Add(new AuditRun
+        db.AuditRuns.Add(new AuditRun
         {
             Id = auditId,
             TargetUrl = "https://example.com",
@@ -162,34 +180,311 @@ public class AuditResultIngestorTests : IDisposable
             RunDir = runDirRelative,
             Plugins = "[]"
         });
+        await db.SaveChangesAsync();
 
-        // Existing gaps should be preserved
-        _db.Gaps.Add(new Gap { Id = Guid.NewGuid(), AuditRunId = auditId, ElementId = "gap-existing", ReasonCode = "EXISTING", RiskLevel = "medium" });
-
-        // Existing findings should be replaced
-        _db.Findings.Add(new Finding { Id = Guid.NewGuid(), AuditRunId = auditId, RuleId = "old", Severity = "info", Category = "x", Title = "old", Detail = "" });
-        await _db.SaveChangesAsync();
-
-        // summary.json present with new findings
-        File.WriteAllText(Path.Combine(_runDir, "summary.json"), """
-            {"run":{},"findings":[{"ruleId":"new","severity":"error","category":"console","title":"E","detail":"D"}],"metrics":{"durationMs":500}}
+        File.WriteAllText(
+            Path.Combine(runDirFull, "summary.json"),
+            """
+            {
+              "run": {},
+              "findings": [
+                { "ruleId": "R3", "severity": "warn", "category": "test", "title": "Dup", "detail": "Det" },
+                { "ruleId": "R3", "severity": "warn", "category": "test", "title": "Dup", "detail": "Det" },
+                { "ruleId": "R3", "severity": "warn", "category": "test", "title": "Dup", "detail": "Det" }
+              ],
+              "metrics": {}
+            }
             """);
-        // gaps.json intentionally missing
 
-        var runnerOptions = Options.Create(new AuditRunnerOptions { WorkingDirectory = workingDir });
-        var ingestor = new AuditResultIngestor(_db, runnerOptions, NullLogger<AuditResultIngestor>.Instance);
+        File.WriteAllText(
+            Path.Combine(runDirFull, "gaps.json"),
+            """{"gaps":[]}""");
+
+        var ingestor = CreateIngestor(db, workingRoot);
 
         await ingestor.IngestAsync(auditId);
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
 
-        var findings = await _db.Findings.Where(f => f.AuditRunId == auditId).ToListAsync();
-        var gaps = await _db.Gaps.Where(g => g.AuditRunId == auditId).ToListAsync();
+        var template = await db.FindingTemplates.AsNoTracking().SingleAsync();
+        var instances = await db.FindingInstances.AsNoTracking().ToListAsync();
+        var findings = await db.Findings.AsNoTracking().Where(f => f.AuditRunId == auditId).ToListAsync();
 
-        Assert.Single(findings);
-        Assert.Equal("new", findings[0].RuleId);
+        Assert.Equal(3, findings.Count);
+        Assert.Equal(3, template.OccurrenceCount);
+        Assert.Equal(3, instances.Count);
+        Assert.All(instances, i => Assert.Equal(template.Id, i.FindingTemplateId));
+    }
 
-        Assert.Single(gaps);
-        Assert.Equal("gap-existing", gaps[0].ElementId);
-        Assert.Equal("EXISTING", gaps[0].ReasonCode);
+    [Fact]
+    public async Task Safe_severity_findings_toggle_auto_risk_lower_suggested_after_threshold()
+    {
+        var (db, workingRoot) = CreateDbAndWorkingDir(_fixture);
+        using var _ = db;
+
+        var runDirFull = PrepareRunDirectory(workingRoot, out var runDirRelative);
+        var auditId = Guid.NewGuid();
+
+        db.AuditRuns.Add(new AuditRun
+        {
+            Id = auditId,
+            TargetUrl = "https://example.com",
+            Status = "completed",
+            RunDir = runDirRelative,
+            Plugins = "[]"
+        });
+        await db.SaveChangesAsync();
+
+        // 5 info-level findings with same fingerprint.
+        File.WriteAllText(
+            Path.Combine(runDirFull, "summary.json"),
+            """
+            {
+              "run": {},
+              "findings": [
+                { "ruleId": "R4", "severity": "info", "category": "test", "title": "Safe", "detail": "Det" },
+                { "ruleId": "R4", "severity": "info", "category": "test", "title": "Safe", "detail": "Det" },
+                { "ruleId": "R4", "severity": "info", "category": "test", "title": "Safe", "detail": "Det" },
+                { "ruleId": "R4", "severity": "info", "category": "test", "title": "Safe", "detail": "Det" },
+                { "ruleId": "R4", "severity": "info", "category": "test", "title": "Safe", "detail": "Det" }
+              ],
+              "metrics": {}
+            }
+            """);
+
+        File.WriteAllText(
+            Path.Combine(runDirFull, "gaps.json"),
+            """{"gaps":[]}""");
+
+        var ingestor = CreateIngestor(db, workingRoot);
+
+        await ingestor.IngestAsync(auditId);
+        await db.SaveChangesAsync();
+
+        var template = await db.FindingTemplates.AsNoTracking().SingleAsync();
+
+        Assert.Equal(5, template.OccurrenceCount);
+        Assert.Equal(5, template.RecentSafeOccurrences);
+        Assert.True(template.AutoRiskLowerSuggested);
+    }
+
+    [Fact]
+    public async Task Template_copies_remediation_and_meta_from_first_occurrence()
+    {
+        var (db, workingRoot) = CreateDbAndWorkingDir(_fixture);
+        using var _ = db;
+
+        var runDirFull = PrepareRunDirectory(workingRoot, out var runDirRelative);
+        var auditId = Guid.NewGuid();
+
+        db.AuditRuns.Add(new AuditRun
+        {
+            Id = auditId,
+            TargetUrl = "https://example.com",
+            Status = "completed",
+            RunDir = runDirRelative,
+            Plugins = "[]"
+        });
+        await db.SaveChangesAsync();
+
+        File.WriteAllText(
+            Path.Combine(runDirFull, "summary.json"),
+            """
+            {
+              "run": {},
+              "findings": [
+                {
+                  "ruleId": "R5",
+                  "severity": "error",
+                  "category": "test",
+                  "title": "Template",
+                  "detail": "Det",
+                  "remediation": "Fix it",
+                  "meta": { "parameter": "q", "fingerprint": "custom-fp" }
+                }
+              ],
+              "metrics": {}
+            }
+            """);
+
+        File.WriteAllText(
+            Path.Combine(runDirFull, "gaps.json"),
+            """{"gaps":[]}""");
+
+        var ingestor = CreateIngestor(db, workingRoot);
+
+        await ingestor.IngestAsync(auditId);
+        await db.SaveChangesAsync();
+
+        var template = await db.FindingTemplates.AsNoTracking().SingleAsync();
+
+        Assert.Equal("Fix it", template.Remediation);
+        Assert.Equal("q", template.Parameter);
+        Assert.NotNull(template.Meta);
+    }
+
+    [Fact]
+    public async Task Status_and_skipReason_are_mapped_from_summary_json()
+    {
+        var (db, workingRoot) = CreateDbAndWorkingDir(_fixture);
+        using var _ = db;
+
+        var runDirFull = PrepareRunDirectory(workingRoot, out var runDirRelative);
+        var auditId = Guid.NewGuid();
+
+        db.AuditRuns.Add(new AuditRun
+        {
+            Id = auditId,
+            TargetUrl = "https://example.com",
+            Status = "completed",
+            RunDir = runDirRelative,
+            Plugins = "[]"
+        });
+        await db.SaveChangesAsync();
+
+        File.WriteAllText(
+            Path.Combine(runDirFull, "summary.json"),
+            """
+            {
+              "run": {},
+              "findings": [
+                {
+                  "ruleId": "R6",
+                  "severity": "info",
+                  "category": "network",
+                  "title": "Policy",
+                  "detail": "Skipped by network policy",
+                  "status": "SKIPPED",
+                  "skipReason": "NETWORK_POLICY"
+                }
+              ],
+              "metrics": {}
+            }
+            """);
+
+        File.WriteAllText(
+            Path.Combine(runDirFull, "gaps.json"),
+            """{"gaps":[]}""");
+
+        var ingestor = CreateIngestor(db, workingRoot);
+
+        await ingestor.IngestAsync(auditId);
+        await db.SaveChangesAsync();
+
+        var finding = await db.Findings.AsNoTracking().SingleAsync();
+        var template = await db.FindingTemplates.AsNoTracking().SingleAsync();
+        var instance = await db.FindingInstances.AsNoTracking().SingleAsync();
+
+        Assert.Equal(FindingStatus.SKIPPED, finding.Status);
+        Assert.Equal(SkipReason.NETWORK_POLICY, finding.SkipReason);
+        Assert.Equal(FindingStatus.SKIPPED, template.Status);
+        Assert.Equal(SkipReason.NETWORK_POLICY, template.SkipReason);
+        Assert.Equal(FindingStatus.SKIPPED, instance.Status);
+        Assert.Equal(SkipReason.NETWORK_POLICY, instance.SkipReason);
+    }
+
+    [Fact]
+    public async Task Missing_status_defaults_to_OK()
+    {
+        var (db, workingRoot) = CreateDbAndWorkingDir(_fixture);
+        using var _ = db;
+
+        var runDirFull = PrepareRunDirectory(workingRoot, out var runDirRelative);
+        var auditId = Guid.NewGuid();
+
+        db.AuditRuns.Add(new AuditRun
+        {
+            Id = auditId,
+            TargetUrl = "https://example.com",
+            Status = "completed",
+            RunDir = runDirRelative,
+            Plugins = "[]"
+        });
+        await db.SaveChangesAsync();
+
+        File.WriteAllText(
+            Path.Combine(runDirFull, "summary.json"),
+            """
+            {
+              "run": {},
+              "findings": [
+                {
+                  "ruleId": "R7",
+                  "severity": "error",
+                  "category": "console",
+                  "title": "No status",
+                  "detail": "Detail"
+                }
+              ],
+              "metrics": {}
+            }
+            """);
+
+        File.WriteAllText(
+            Path.Combine(runDirFull, "gaps.json"),
+            """{"gaps":[]}""");
+
+        var ingestor = CreateIngestor(db, workingRoot);
+
+        await ingestor.IngestAsync(auditId);
+        await db.SaveChangesAsync();
+
+        var finding = await db.Findings.AsNoTracking().SingleAsync();
+
+        Assert.Equal(FindingStatus.OK, finding.Status);
+        Assert.Null(finding.SkipReason);
+    }
+
+    [Fact]
+    public async Task Unknown_status_string_maps_to_OK()
+    {
+        var (db, workingRoot) = CreateDbAndWorkingDir(_fixture);
+        using var _ = db;
+
+        var runDirFull = PrepareRunDirectory(workingRoot, out var runDirRelative);
+        var auditId = Guid.NewGuid();
+
+        db.AuditRuns.Add(new AuditRun
+        {
+            Id = auditId,
+            TargetUrl = "https://example.com",
+            Status = "completed",
+            RunDir = runDirRelative,
+            Plugins = "[]"
+        });
+        await db.SaveChangesAsync();
+
+        File.WriteAllText(
+            Path.Combine(runDirFull, "summary.json"),
+            """
+            {
+              "run": {},
+              "findings": [
+                {
+                  "ruleId": "R8",
+                  "severity": "warn",
+                  "category": "network",
+                  "title": "Weird status",
+                  "detail": "Detail",
+                  "status": "SOMETHING_ELSE"
+                }
+              ],
+              "metrics": {}
+            }
+            """);
+
+        File.WriteAllText(
+            Path.Combine(runDirFull, "gaps.json"),
+            """{"gaps":[]}""");
+
+        var ingestor = CreateIngestor(db, workingRoot);
+
+        await ingestor.IngestAsync(auditId);
+        await db.SaveChangesAsync();
+
+        var finding = await db.Findings.AsNoTracking().SingleAsync();
+
+        Assert.Equal(FindingStatus.OK, finding.Status);
+        Assert.Null(finding.SkipReason);
     }
 }
+

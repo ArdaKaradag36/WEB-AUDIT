@@ -33,6 +33,11 @@ public sealed class AuditRunnerOptions
     public int MaxRunDurationMinutes { get; set; } = 15;
 
     /// <summary>
+    /// Lease duration (in seconds) used for DB leasing of audit_runs rows.
+    /// </summary>
+    public int LeaseDurationSeconds { get; set; } = 60;
+
+    /// <summary>
     /// Development-only helper to simulate a hung runner (in seconds). Optional; do not enable in production.
     /// </summary>
     public int? SimulateHangSeconds { get; set; }

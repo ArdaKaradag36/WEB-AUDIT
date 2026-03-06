@@ -1,5 +1,5 @@
 import type { TestResult } from "../domain/result";
-import type { Finding } from "../domain/finding";
+import type { Finding, FindingStatus, SkipReason } from "../domain/finding";
 import type { ConsoleIssue } from "./collectConsoleIssues";
 import type { NetworkIssue } from "./collectNetworkIssues";
 import type { LinkCheck } from "./sampleLinks";
@@ -35,6 +35,9 @@ export type RuleEngineInput = {
   /** Denylisted origins; if any thirdPartyOrigin matches, produce a finding. */
   thirdPartyDenylist?: string[];
 };
+
+import { runHttpResponseRules } from "../rules/http/analyzer";
+import { runJsAnalyzer } from "../rules/js/analyzer";
 
 function isTelemetryUrl(url: string | undefined): boolean {
   if (!url) return false;
@@ -79,6 +82,7 @@ export function runRuleEngine(input: RuleEngineInput): Finding[] {
         pageErrorCount: input.pageErrors.length,
         samples: [...consoleErrors.slice(0, 5), ...input.pageErrors.slice(0, 3).map((t) => ({ type: "pageerror", text: t }))],
       },
+      status: "OK",
     });
   }
 
@@ -91,6 +95,7 @@ export function runRuleEngine(input: RuleEngineInput): Finding[] {
       detail: `${consoleWarnings.length} warning(s).`,
       remediation: "Review warnings; often indicate deprecations, CSP issues, or resource loads.",
       meta: { count: consoleWarnings.length, samples: consoleWarnings.slice(0, 5) },
+      status: "OK",
     });
   }
 
@@ -105,6 +110,7 @@ export function runRuleEngine(input: RuleEngineInput): Finding[] {
       detail: `${httpBad.length} response(s) with status >= 400.`,
       remediation: "Fix endpoints returning 4xx/5xx; ensure static resources are accessible.",
       meta: { count: httpBad.length, samples: httpBad.slice(0, 10) },
+      status: "FAILED",
     });
   }
 
@@ -119,6 +125,7 @@ export function runRuleEngine(input: RuleEngineInput): Finding[] {
       remediation:
         "Investigate DNS/timeouts/blocked requests; check firewall/proxy policies in public networks.",
       meta: { count: failedReq.length, samples: failedReq.slice(0, 10) },
+      status: "FAILED",
     });
   }
 
@@ -138,6 +145,25 @@ export function runRuleEngine(input: RuleEngineInput): Finding[] {
       remediation:
         "Review telemetry/analytics endpoints if required; these are informational only for application availability.",
       meta: { samples: telemetryIssues.slice(0, 10) },
+      status: "INFO",
+    });
+  }
+
+  // Aggregate SKIPPED due to network policy (timeouts/429/blocked).
+  const policyIssues = input.networkIssues.filter((i) => i.policyReason === "NETWORK_POLICY");
+  if (policyIssues.length > 0) {
+    findings.push({
+      ruleId: "network_policy_skipped",
+      severity: "info",
+      category: "network",
+      title: "Requests skipped due to network policy",
+      detail: `${policyIssues.length} request(s) were skipped due to timeouts, proxies or rate limits.`,
+      remediation:
+        "Review network/firewall/WAF and rate-limit policies; if intentional, this can usually be accepted as risk.",
+      confidence: 0.8,
+      meta: { samples: policyIssues.slice(0, 20) },
+      status: "SKIPPED",
+      skipReason: "NETWORK_POLICY",
     });
   }
 
@@ -165,6 +191,7 @@ export function runRuleEngine(input: RuleEngineInput): Finding[] {
         detail: `${broken.length} broken link(s) in sample.`,
         remediation: "Fix 404/500 internal paths; update navigation and sitemap.",
         meta: { brokenCount: broken.length, samples: broken.slice(0, 10) },
+        status: "OK",
       });
     }
   }
@@ -181,6 +208,7 @@ export function runRuleEngine(input: RuleEngineInput): Finding[] {
       detail: a11yFail.errorMessage ?? "Missing labels/aria for form controls.",
       remediation: "Add <label for> or aria-label; ensure keyboard accessibility.",
       meta: a11yFail.meta,
+      status: "FAILED",
     });
   }
 
@@ -193,78 +221,29 @@ export function runRuleEngine(input: RuleEngineInput): Finding[] {
       title: "Audit blocked (captcha or login required)",
       remediation: "Use allowlisted auth plugin or manual review.",
       meta: { codes: input.results.filter((r) => r.status === "BLOCKED").map((r) => r.code) },
+      status: "SKIPPED",
+      skipReason: "AUTH_BLOCKED",
     });
   }
+  findings.push(
+    ...runHttpResponseRules({
+      targetUrl: input.targetUrl,
+      mainDocumentHeaders: input.mainDocumentHeaders,
+      cookies: input.cookies,
+      networkIssues: input.networkIssues,
+    }),
+  );
 
-  if (input.mainDocumentHeaders) {
-    const h = input.mainDocumentHeaders;
-    const header = (name: string) => {
-      const lower = name.toLowerCase();
-      const ent = Object.entries(h).find(([k]) => k.toLowerCase() === lower);
-      return ent?.[1]?.trim();
-    };
-    const missing: string[] = [];
-    if (!header("content-security-policy")) missing.push("Content-Security-Policy");
-    if (!header("strict-transport-security")) missing.push("Strict-Transport-Security");
-    if (!header("x-content-type-options")) missing.push("X-Content-Type-Options");
-    if (!header("referrer-policy")) missing.push("Referrer-Policy");
-    const xfo = header("x-frame-options");
-    const csp = header("content-security-policy");
-    const fa = csp?.includes("frame-ancestors");
-    if (!xfo && !fa) missing.push("X-Frame-Options or CSP frame-ancestors");
-    if (missing.length > 0) {
-      findings.push({
-        ruleId: "security_headers_rule",
-        severity: "warn",
-        category: "security_headers",
-        title: "Security headers missing or weak",
-        detail: `Missing or not observed: ${missing.join(", ")}.`,
-        remediation:
-          "Add recommended headers suitable for public sector deployments (CSP, HSTS, X-Content-Type-Options, Referrer-Policy, frame-ancestors/X-Frame-Options).",
-        meta: { missing, observed: Object.keys(h) },
-      });
-    }
-    if (csp) {
-      const cspLower = csp.toLowerCase();
-      const unsafe: string[] = [];
-      if (cspLower.includes("unsafe-inline")) unsafe.push("unsafe-inline");
-      if (cspLower.includes("unsafe-eval")) unsafe.push("unsafe-eval");
-      if (cspLower.includes("*") && (cspLower.includes("script-src") || cspLower.includes("default-src"))) unsafe.push("wildcard in script/default-src");
-      if (unsafe.length > 0) {
-        findings.push({
-          ruleId: "csp_quality_rule",
-          severity: "warn",
-          category: "security_headers",
-          title: "CSP uses unsafe or weak directives",
-          detail: `Observed: ${unsafe.join(", ")}.`,
-          remediation: "Tighten CSP: avoid unsafe-inline, unsafe-eval, and wildcards for script-src/default-src.",
-          meta: { unsafe },
-        });
-      }
-    }
-  }
-
-  if (input.cookies && input.cookies.length > 0) {
-    const weak: Array<{ name: string; missing: string[] }> = [];
-    for (const c of input.cookies) {
-      const missing: string[] = [];
-      if (!c.secure) missing.push("Secure");
-      if (!c.httpOnly) missing.push("HttpOnly");
-      if (c.sameSite === "None" && !c.secure) missing.push("SameSite=None requires Secure");
-      if (missing.length > 0) weak.push({ name: c.name, missing });
-    }
-    if (weak.length > 0) {
-      findings.push({
-        ruleId: "cookie_security_rule",
-        severity: "warn",
-        category: "security_headers",
-        title: "Cookie security flags missing or weak",
-        detail: `${weak.length} cookie(s) with missing Secure/HttpOnly or invalid SameSite.`,
-        remediation: "Set Secure and HttpOnly on sensitive cookies; prefer SameSite=Strict or Lax.",
-        meta: { weakCookies: weak.slice(0, 20) },
-      });
-    }
-  }
+  // JavaScript / frontend analysis: secrets, API endpoints, sourcemaps, debug noise.
+  findings.push(
+    ...runJsAnalyzer({
+      targetUrl: input.targetUrl,
+      consoleIssues: input.consoleIssues,
+      responseUrls: input.thirdPartyOrigins ?? [],
+      // mainDocumentHtml could be wired here in the future; for now we omit it
+      // to avoid large payloads through the rule engine interface.
+    }),
+  );
 
   if (input.thirdPartyOrigins && input.thirdPartyOrigins.length > 0) {
     const denylist = input.thirdPartyDenylist ?? [];

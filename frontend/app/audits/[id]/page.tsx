@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { apiBaseUrl, apiRequest } from "../../../lib/api";
+import { apiBaseUrl, apiRequest, ApiError } from "../../../lib/api";
 import { ProtectedRoute } from "../../../components/ProtectedRoute";
 import { AuditSidebar } from "../../../components/AuditSidebar";
 import { StatusBadge } from "../../../components/StatusBadge";
 import { AuditActionsMenu } from "../../../components/AuditActionsMenu";
+import { ErrorState } from "../../../components/ErrorState";
+import { LoadingState } from "../../../components/LoadingState";
 
 interface AuditDetail {
   id: string;
@@ -30,6 +32,25 @@ interface FindingDto {
   category: string;
   title: string;
   detail?: string;
+  meta?: unknown;
+  status?: "OK" | "SKIPPED" | "FAILED" | "INFO";
+  skipReason?: "NETWORK_POLICY" | "RATE_LIMIT" | "TIMEOUT" | "AUTH_BLOCKED" | "ROBOTS" | "OTHER";
+}
+
+interface FindingGroupDto {
+  ruleId: string;
+  severity: string;
+  category: string;
+  title: string;
+  count: number;
+}
+
+interface PagedFindingsResponse {
+  items: FindingDto[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  groups: FindingGroupDto[];
 }
 
 interface GapDto {
@@ -63,7 +84,26 @@ interface AuditSummary {
   maxConsoleErrorPerPage?: number;
   topFailingUrl?: string;
   mostCommonGapReason?: string;
+  skippedFindings: number;
 }
+
+type ErrorKind =
+  | "unauthorized"
+  | "forbidden"
+  | "rateLimited"
+  | "server"
+  | "notFound"
+  | "network"
+  | "generic";
+
+interface ErrorState {
+  kind: ErrorKind;
+  status?: number;
+  message: string;
+  detail?: string;
+}
+
+const TERMINAL_STATUSES = new Set(["completed", "failed", "canceled", "cancelled"]);
 
 function formatDateTime(value?: string): string {
   if (!value) return "-";
@@ -72,64 +112,270 @@ function formatDateTime(value?: string): string {
   return d.toLocaleString("tr-TR");
 }
 
+function mapApiError(err: ApiError): ErrorState {
+  switch (err.status) {
+    case 401:
+      return {
+        kind: "unauthorized",
+        status: err.status,
+        message: "Oturumunuzun süresi dolmuş olabilir. Lütfen tekrar giriş yapın.",
+        detail: err.detail
+      };
+    case 403:
+      return {
+        kind: "forbidden",
+        status: err.status,
+        message: "Bu denetimi görüntüleme yetkiniz yok.",
+        detail: err.detail
+      };
+    case 404:
+      return {
+        kind: "notFound",
+        status: err.status,
+        message: "İstenen denetim kaydı bulunamadı.",
+        detail: err.detail
+      };
+    case 429:
+      return {
+        kind: "rateLimited",
+        status: err.status,
+        message: "Çok sık istek gönderildi. Lütfen birkaç saniye sonra tekrar deneyin.",
+        detail: err.detail
+      };
+    default:
+      if (err.status >= 500) {
+        return {
+          kind: "server",
+          status: err.status,
+          message: "Sunucu tarafında bir hata oluştu. Lütfen daha sonra tekrar deneyin.",
+          detail: err.detail
+        };
+      }
+      return {
+        kind: "generic",
+        status: err.status,
+        message: err.message || "Beklenmeyen bir hata oluştu.",
+        detail: err.detail
+      };
+  }
+}
+
 function AuditDetailInner() {
   const params = useParams<{ id: string }>();
   const id = params.id;
   const [detail, setDetail] = useState<AuditDetail | null>(null);
   const [findings, setFindings] = useState<FindingDto[]>([]);
+  const [findingGroups, setFindingGroups] = useState<FindingGroupDto[]>([]);
   const [gaps, setGaps] = useState<GapDto[]>([]);
   const [summary, setSummary] = useState<AuditSummary | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ErrorState | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [retryToken, setRetryToken] = useState(0);
+
+  const handleRetry = () => {
+    setError(null);
+    setIsLoading(true);
+    setRetryToken(token => token + 1);
+  };
 
   useEffect(() => {
     if (!id) return;
-    (async () => {
+    const abortController = new AbortController();
+
+    async function loadInitial() {
       try {
+        setError(null);
         const [detailResp, findingsPage, gapsPage, summaryResp] = await Promise.all([
-          apiRequest<AuditDetail>(`${apiBaseUrl}/api/Audits/${id}`),
-          apiRequest<{ items: FindingDto[] }>(
-            `${apiBaseUrl}/api/Audits/${id}/findings?page=1&pageSize=20`
+          apiRequest<AuditDetail>(`${apiBaseUrl}/api/Audits/${id}`, {
+            signal: abortController.signal
+          }),
+          apiRequest<PagedFindingsResponse>(
+            `${apiBaseUrl}/api/Audits/${id}/findings?page=1&pageSize=200`,
+            { signal: abortController.signal }
           ),
           apiRequest<{ items: GapDto[] }>(
-            `${apiBaseUrl}/api/Audits/${id}/gaps?page=1&pageSize=20`
+            `${apiBaseUrl}/api/Audits/${id}/gaps?page=1&pageSize=20`,
+            { signal: abortController.signal }
           ),
-          apiRequest<AuditSummary>(`${apiBaseUrl}/api/Audits/${id}/summary`)
+          apiRequest<AuditSummary>(`${apiBaseUrl}/api/Audits/${id}/summary`, {
+            signal: abortController.signal
+          })
         ]);
 
         setDetail(detailResp);
         setFindings((findingsPage.items ?? []) as FindingDto[]);
+        setFindingGroups((findingsPage.groups ?? []) as FindingGroupDto[]);
         setGaps((gapsPage.items ?? []) as GapDto[]);
         setSummary(summaryResp);
       } catch (err: any) {
-        setError(err.message ?? "Yüklenirken hata oluştu.");
+        if (abortController.signal.aborted) return;
+        if (err instanceof ApiError) {
+          setError(mapApiError(err));
+        } else {
+          setError({
+            kind: "network",
+            message: "Ağ hatası. Lütfen bağlantınızı kontrol edin ve tekrar deneyin."
+          });
+        }
+      } finally {
+        setIsLoading(false);
       }
-    })();
-  }, [id]);
+    }
+
+    loadInitial();
+
+    return () => {
+      abortController.abort();
+    };
+  }, [id, retryToken]);
+
+  // Polling for status + metrics while run is queued/running.
+  useEffect(() => {
+    if (!id || !detail) return;
+    const normalized = detail.status?.toLowerCase?.() ?? "";
+    if (TERMINAL_STATUSES.has(normalized)) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const intervalId = window.setInterval(async () => {
+      try {
+        const [detailResp, summaryResp] = await Promise.all([
+          apiRequest<AuditDetail>(`${apiBaseUrl}/api/Audits/${id}`, {
+            signal: controller.signal
+          }),
+          apiRequest<AuditSummary>(`${apiBaseUrl}/api/Audits/${id}/summary`, {
+            signal: controller.signal
+          })
+        ]);
+        setDetail(detailResp);
+        setSummary(summaryResp);
+      } catch (err: any) {
+        if (controller.signal.aborted) return;
+        // Polling hatasını sessiz yutuyoruz; mevcut ekrandaki veriyi bozmuyoruz.
+        // eslint-disable-next-line no-console
+        console.error("AuditDetail polling error", err);
+      }
+    }, 5000);
+
+    return () => {
+      controller.abort();
+      clearInterval(intervalId);
+    };
+  }, [id, detail]);
 
   if (error) {
-    return <div className="page-error">{error}</div>;
+    return (
+      <ErrorState
+        statusCode={error.status}
+        title={
+          error.kind === "notFound"
+            ? "Denetim bulunamadı"
+            : "Bir hata oluştu"
+        }
+        description={
+          error.kind === "unauthorized"
+            ? "Oturumun geçersiz. Tekrar giriş yap."
+            : error.kind === "forbidden"
+            ? "Bu kaynağa erişim iznin yok."
+            : error.kind === "rateLimited"
+            ? "Çok fazla istek. Biraz sonra tekrar dene."
+            : error.kind === "server"
+            ? "Sunucu hatası. Tekrar dene."
+            : error.kind === "network"
+            ? "Bağlantı sorunu."
+            : error.message
+        }
+        actions={[
+          {
+            label: "Tekrar dene",
+            onClick: handleRetry,
+            variant: "primary",
+          },
+        ]}
+      />
+    );
+  }
+
+  if (isLoading && !detail) {
+    return (
+      <LoadingState variant="page" message="Denetim yükleniyor..." />
+    );
   }
 
   if (!detail) {
-    return <div className="page-loading">Yükleniyor...</div>;
+    return (
+      <div className="page-error" role="alert" aria-live="assertive">
+        <h2>Denetim yüklenemedi</h2>
+        <button
+          type="button"
+          className="btn"
+          onClick={handleRetry}
+          aria-label="Denetimi yeniden dene"
+        >
+          Tekrar dene
+        </button>
+      </div>
+    );
   }
 
   const networkFindingCount = findings.filter(f => f.category === "network").length;
   const consoleFindingCount = findings.filter(f => f.category === "console").length;
 
+  // Basit SKIPPED görünürlüğü: NETWORK_POLICY işareti geçen bulgular.
+  const skippedFindings = findings.filter(f => f.status === "SKIPPED");
+  const skippedNetworkFindings = skippedFindings.filter(f => f.category === "network");
+
+  function mapSkipReason(reason?: string): string {
+    switch (reason) {
+      case "NETWORK_POLICY":
+        return "Network politikası";
+      case "RATE_LIMIT":
+        return "Rate limit";
+      case "TIMEOUT":
+        return "Zaman aşımı";
+      case "AUTH_BLOCKED":
+        return "Auth engellendi";
+      case "ROBOTS":
+        return "Robots kuralı";
+      case "OTHER":
+        return "Diğer";
+      default:
+        return "";
+    }
+  }
+
+  const normalizedStatus = detail.status?.toLowerCase?.() ?? "";
+  const isCompleted = normalizedStatus === "completed";
+  const isFailed = normalizedStatus === "failed";
+  const isCanceled = normalizedStatus === "canceled" || normalizedStatus === "cancelled";
+  const isRunning = normalizedStatus === "running";
+  const isQueued =
+    normalizedStatus === "queued" ||
+    (!isRunning && !isCompleted && !isFailed && !isCanceled);
+
+  const elapsedMs = summary?.durationMs ?? detail.durationMs;
+  const pagesScanned = summary?.linkSampled;
+  const retries = detail.retryCount ?? 0;
+  const skippedCount = skippedNetworkFindings.length;
+
   return (
-    <div className="audit-detail-layout">
+    <main
+      className="audit-detail-layout"
+      aria-labelledby="audit-detail-heading"
+    >
       <div className="audit-main">
         <section className="card audit-summary-card">
         <div className="card-header card-header-row">
           <div>
-            <h2>Denetim Detayı</h2>
+            <h2 id="audit-detail-heading">Denetim Detayı</h2>
             <a
               href={detail.targetUrl}
               target="_blank"
               rel="noreferrer"
               className="audit-target-url"
               title={detail.targetUrl}
+              aria-label={`Hedef URL'i yeni sekmede aç: ${detail.targetUrl}`}
             >
               {detail.targetUrl}
             </a>
@@ -149,6 +395,30 @@ function AuditDetailInner() {
             <span className="summary-value">
               <StatusBadge status={detail.status} />
             </span>
+          </div>
+          <div className="audit-timeline" aria-label="Denetim durum zaman çizelgesi">
+            <ol className="timeline-list">
+              <li
+                className={`timeline-step ${isQueued || isRunning || isCompleted || isFailed || isCanceled ? "timeline-step-completed" : ""}`}
+                aria-current={isQueued ? "step" : undefined}
+              >
+                <span className="timeline-step-label">Kuyrukta</span>
+              </li>
+              <li
+                className={`timeline-step ${isRunning || isCompleted || isFailed || isCanceled ? "timeline-step-completed" : ""}`}
+                aria-current={isRunning ? "step" : undefined}
+              >
+                <span className="timeline-step-label">Çalışıyor</span>
+              </li>
+              <li
+                className={`timeline-step ${isCompleted || isFailed || isCanceled ? "timeline-step-completed" : ""}`}
+                aria-current={isCompleted || isFailed || isCanceled ? "step" : undefined}
+              >
+                <span className="timeline-step-label">
+                  {isFailed ? "Başarısız" : isCanceled ? "İptal Edildi" : "Tamamlandı"}
+                </span>
+              </li>
+            </ol>
           </div>
           <div>
             <span className="summary-label">Başlangıç</span>
@@ -194,6 +464,14 @@ function AuditDetailInner() {
               {detail.retryCount ?? 0}
             </span>
           </div>
+          {summary?.skippedFindings && summary.skippedFindings > 0 && (
+            <div>
+              <span className="summary-label">SKIPPED (Network Policy)</span>
+              <span className="summary-value">
+                {summary.skippedFindings}
+              </span>
+            </div>
+          )}
           {summary && (
             <>
               <div>
@@ -271,6 +549,31 @@ function AuditDetailInner() {
             </div>
           )}
           </div>
+        <div
+          className="audit-progress-cards"
+          aria-label="Tarama ilerleme kartları"
+        >
+          <div className="progress-card">
+            <span className="summary-label">Geçen Süre (ms)</span>
+            <span className="summary-value">{elapsedMs ?? "-"}</span>
+          </div>
+          <div className="progress-card">
+            <span className="summary-label">Tahmini Sayfa / Link</span>
+            <span className="summary-value">{pagesScanned ?? "-"}</span>
+          </div>
+          <div className="progress-card">
+            <span className="summary-label">Retry Sayısı</span>
+            <span className="summary-value">{retries}</span>
+          </div>
+          <div className="progress-card">
+            <span className="summary-label">SKIPPED (Network Policy)</span>
+            <span className="summary-value">{skippedCount}</span>
+          </div>
+          <div className="progress-card">
+            <span className="summary-label">İstek Sayısı</span>
+            <span className="summary-value">-</span>
+          </div>
+        </div>
         {detail.status === "failed" && detail.lastError && (
           <div className="card-body">
             <div className="error">
@@ -283,8 +586,33 @@ function AuditDetailInner() {
         <section className="card">
           <div className="card-header">
             <h3>Bulgular</h3>
-            <p>Plugin kurallarından üretilen özet bulgular.</p>
+            <p>Plugin kurallarından üretilen özet bulgular ve dedup grupları.</p>
           </div>
+          {findingGroups.length > 0 && (
+            <div className="card-body">
+              <h4>Bulgu Grupları (Bu tipten X adet)</h4>
+              <table className="card-table finding-groups-table">
+                <thead>
+                  <tr>
+                    <th>Seviye</th>
+                    <th>Kural</th>
+                    <th>Başlık</th>
+                    <th>Adet</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {findingGroups.map(group => (
+                    <tr key={`${group.ruleId}-${group.title}`}>
+                      <td>{group.severity}</td>
+                      <td>{group.ruleId}</td>
+                      <td>{group.title}</td>
+                      <td>{group.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           <div className="card-table-wrapper">
             <table className="card-table">
               <thead>
@@ -297,17 +625,39 @@ function AuditDetailInner() {
                 </tr>
               </thead>
               <tbody>
-                {findings.map(f => (
-                  <tr key={f.id}>
-                    <td>{f.ruleId}</td>
-                    <td>{f.severity}</td>
-                    <td>{f.category}</td>
-                    <td>{f.title}</td>
-                    <td title={f.detail}>
-                      {f.detail ? (f.detail.length > 80 ? `${f.detail.slice(0, 77)}...` : f.detail) : "-"}
-                    </td>
-                  </tr>
-                ))}
+                {findings.map(f => {
+                  const isSkipped = f.status === "SKIPPED";
+                  const reasonLabel = mapSkipReason(f.skipReason as string | undefined);
+                  return (
+                    <tr key={f.id}>
+                      <td>{f.ruleId}</td>
+                      <td>{f.severity}</td>
+                      <td>{f.category}</td>
+                      <td>
+                        {f.title}
+                        {isSkipped && (
+                          <span
+                            className="badge-skip"
+                            aria-label={
+                              reasonLabel
+                                ? `SKIPPED: ${reasonLabel}`
+                                : "SKIPPED bulgu"
+                            }
+                          >
+                            SKIPPED{reasonLabel ? ` (${reasonLabel})` : ""}
+                          </span>
+                        )}
+                      </td>
+                      <td title={f.detail}>
+                        {f.detail
+                          ? f.detail.length > 80
+                            ? `${f.detail.slice(0, 77)}...`
+                            : f.detail
+                          : "-"}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -352,7 +702,7 @@ function AuditDetailInner() {
       </div>
 
       <AuditSidebar currentId={detail.id} />
-    </div>
+    </main>
   );
 }
 

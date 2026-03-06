@@ -26,6 +26,21 @@ public sealed class Finding
     public string? Remediation { get; set; }
 
     /// <summary>
+    /// Optional numeric confidence score in [0,1] mapped from runner.
+    /// </summary>
+    public double? Confidence { get; set; }
+
+    /// <summary>
+    /// Execution-level status for this finding (OK/SKIPPED/FAILED/INFO).
+    /// </summary>
+    public FindingStatus Status { get; set; } = FindingStatus.OK;
+
+    /// <summary>
+    /// Optional reason when Status == SKIPPED or when the audit was blocked.
+    /// </summary>
+    public SkipReason? SkipReason { get; set; }
+
+    /// <summary>
     /// Ek detayları tutmak için JSONB alanı (ör. sample loglar, sayılar).
     /// JsonDocument kullanıyoruz; Npgsql bunu jsonb'ye doğal map ediyor.
     /// </summary>

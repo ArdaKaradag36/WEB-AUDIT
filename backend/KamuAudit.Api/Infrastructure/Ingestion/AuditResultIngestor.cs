@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Security.Cryptography;
 using KamuAudit.Api.Application.Interfaces;
 using KamuAudit.Api.Domain.Entities;
 using KamuAudit.Api.Infrastructure.Monitoring;
@@ -114,6 +115,8 @@ public sealed class AuditResultIngestor : IAuditResultIngestor
             return;
         }
 
+        var stopwatch = Stopwatch.StartNew();
+
         List<Finding> findings;
         RunMetrics? metrics;
         List<Gap> gaps;
@@ -131,7 +134,7 @@ public sealed class AuditResultIngestor : IAuditResultIngestor
                 : new List<Gap>();
         }
 
-        // Update run metrics from summary (duration, link stats)
+        // Update run metrics from summary (duration, link stats) and persist to DB
         using (var activity = _activitySource.StartActivity("Ingestion.PersistDb", ActivityKind.Internal))
         {
             activity?.SetTag("auditRun.id", auditRunId);
@@ -141,12 +144,29 @@ public sealed class AuditResultIngestor : IAuditResultIngestor
                 run.DurationMs = metrics.DurationMs;
                 run.LinkSampled = metrics.LinkSampled;
                 run.LinkBroken = metrics.LinkBroken;
+
+                // Feed runner-level metrics into in-memory Prometheus snapshot.
+                AuditMetrics.AddRunnerMetrics(
+                    metrics.DurationMs,
+                    metrics.PagesScanned,
+                    metrics.RequestsTotal,
+                    metrics.RequestFailed,
+                    metrics.SkippedNetwork);
+
+                if (metrics.FindingsBySeverity is { Count: > 0 })
+                {
+                    foreach (var kvp in metrics.FindingsBySeverity)
+                    {
+                        AuditMetrics.AddRunnerFindingsBySeverity(kvp.Key, kvp.Value);
+                    }
+                }
             }
 
             // Idempotency:
             // - Always replace Findings when summary exists.
             // - Replace Gaps only when gaps.json exists; otherwise keep existing gaps.
             _db.Findings.RemoveRange(_db.Findings.Where(f => f.AuditRunId == auditRunId));
+            _db.FindingInstances.RemoveRange(_db.FindingInstances.Where(i => i.AuditRunId == auditRunId));
 
             if (hasGapsJson)
             {
@@ -159,10 +179,84 @@ public sealed class AuditResultIngestor : IAuditResultIngestor
                     auditRunId, runDirFull);
             }
 
-            foreach (var f in findings)
+            if (findings.Count > 0)
             {
-                f.AuditRunId = auditRunId;
-                _db.Findings.Add(f);
+                // Compute fingerprints and upsert into finding_templates + finding_instances.
+                var now = DateTimeOffset.UtcNow;
+
+                // Preload any existing templates for fingerprints in this run.
+                var fingerprints = findings
+                    .Select(f => ComputeFingerprint(run.TargetUrl, f))
+                    .Distinct()
+                    .ToList();
+
+                var templates = await _db.FindingTemplates
+                    .Where(t => fingerprints.Contains(t.Fingerprint))
+                    .ToListAsync(cancellationToken);
+                var templatesByFingerprint = templates.ToDictionary(t => t.Fingerprint, t => t, StringComparer.Ordinal);
+
+                foreach (var f in findings)
+                {
+                    f.AuditRunId = auditRunId;
+                    _db.Findings.Add(f);
+
+                    var fp = ComputeFingerprint(run.TargetUrl, f);
+                    if (!templatesByFingerprint.TryGetValue(fp, out var template))
+                    {
+                        template = new FindingTemplate
+                        {
+                            Id = Guid.NewGuid(),
+                            Fingerprint = fp,
+                            RuleId = f.RuleId,
+                            Severity = f.Severity,
+                            Category = f.Category,
+                            Title = f.Title,
+                            CanonicalUrl = CanonicalizeUrl(run.TargetUrl),
+                            Parameter = ExtractParameter(f),
+                            Remediation = f.Remediation,
+                            FirstSeenAt = now,
+                            LastSeenAt = now,
+                            OccurrenceCount = 0,
+                            RecentSafeOccurrences = 0,
+                            AutoRiskLowerSuggested = false,
+                            Meta = f.Meta,
+                            Status = f.Status,
+                            SkipReason = f.SkipReason
+                        };
+                        templatesByFingerprint[fp] = template;
+                        _db.FindingTemplates.Add(template);
+                    }
+
+                    template.OccurrenceCount += 1;
+                    template.LastSeenAt = now;
+                    if (IsSafeSeverity(f.Severity))
+                    {
+                        template.RecentSafeOccurrences += 1;
+                    }
+
+                    // Simple heuristic: if we have seen this template at least 5 times and all are low severity,
+                    // suggest risk lowering in the UI.
+                    if (!template.AutoRiskLowerSuggested &&
+                        template.OccurrenceCount >= 5 &&
+                        template.RecentSafeOccurrences >= 5 &&
+                        IsSafeSeverity(template.Severity))
+                    {
+                        template.AutoRiskLowerSuggested = true;
+                    }
+
+                    var instance = new FindingInstance
+                    {
+                        Id = Guid.NewGuid(),
+                        FindingTemplateId = template.Id,
+                        AuditRunId = auditRunId,
+                        Url = run.TargetUrl,
+                        Parameter = ExtractParameter(f),
+                        DetectedAt = now,
+                        Status = f.Status,
+                        SkipReason = f.SkipReason
+                    };
+                    _db.FindingInstances.Add(instance);
+                }
             }
 
             if (hasGapsJson)
@@ -178,6 +272,9 @@ public sealed class AuditResultIngestor : IAuditResultIngestor
                 "Ingested {FindingCount} findings and {GapCount} gaps for audit run {AuditRunId}.",
                 findings.Count, hasGapsJson ? gaps.Count : 0, auditRunId);
         }
+
+        stopwatch.Stop();
+        AuditMetrics.AddIngestionDuration(stopwatch.ElapsedMilliseconds);
     }
 
     private async Task<(List<Finding> Findings, RunMetrics? Metrics)> ReadSummaryAndFindingsAsync(string summaryPath, CancellationToken cancellationToken)
@@ -201,6 +298,11 @@ public sealed class AuditResultIngestor : IAuditResultIngestor
                 metrics.DurationMs = m.DurationMs;
                 metrics.LinkSampled = m.LinkSampled;
                 metrics.LinkBroken = m.LinkBroken;
+                metrics.PagesScanned = m.PagesScanned;
+                metrics.RequestsTotal = m.RequestsTotal;
+                metrics.RequestFailed = m.RequestFailed;
+                metrics.SkippedNetwork = m.SkippedNetwork;
+                metrics.FindingsBySeverity = m.FindingsBySeverity;
             }
 
             if (root.UiCoverage is { } c)
@@ -223,6 +325,12 @@ public sealed class AuditResultIngestor : IAuditResultIngestor
         public int? TotalElements { get; set; }
         public int? TestedElements { get; set; }
         public int? SkippedElements { get; set; }
+
+        public int? PagesScanned { get; set; }
+        public int? RequestsTotal { get; set; }
+        public int? RequestFailed { get; set; }
+        public int? SkippedNetwork { get; set; }
+        public Dictionary<string, int>? FindingsBySeverity { get; set; }
     }
 
     private static Finding MapToFinding(FindingJson j)
@@ -249,7 +357,10 @@ public sealed class AuditResultIngestor : IAuditResultIngestor
             Title = NullToEmpty(j.Title, 500),
             Detail = j.Detail ?? "",
             Remediation = j.Remediation,
-            Meta = meta
+            Meta = meta,
+            Confidence = j.Confidence,
+            Status = ParseFindingStatus(j.Status),
+            SkipReason = ParseSkipReason(j.SkipReason)
         };
     }
 
@@ -303,5 +414,120 @@ public sealed class AuditResultIngestor : IAuditResultIngestor
     {
         var s = string.IsNullOrWhiteSpace(value) ? "" : value!.Trim();
         return s.Length > maxLen ? s[..maxLen] : s;
+    }
+
+    private static FindingStatus ParseFindingStatus(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return FindingStatus.OK;
+
+        return raw.ToUpperInvariant() switch
+        {
+            "OK" => FindingStatus.OK,
+            "SKIPPED" => FindingStatus.SKIPPED,
+            "FAILED" => FindingStatus.FAILED,
+            "INFO" => FindingStatus.INFO,
+            _ => FindingStatus.OK
+        };
+    }
+
+    private static SkipReason? ParseSkipReason(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+
+        return raw.ToUpperInvariant() switch
+        {
+            "NETWORK_POLICY" => SkipReason.NETWORK_POLICY,
+            "RATE_LIMIT" => SkipReason.RATE_LIMIT,
+            "TIMEOUT" => SkipReason.TIMEOUT,
+            "AUTH_BLOCKED" => SkipReason.AUTH_BLOCKED,
+            "ROBOTS" => SkipReason.ROBOTS,
+            "OTHER" => SkipReason.OTHER,
+            _ => null
+        };
+    }
+
+    private static string CanonicalizeUrl(string url)
+    {
+        try
+        {
+            var u = new Uri(url, UriKind.Absolute);
+            var builder = new UriBuilder(u)
+            {
+                Fragment = string.Empty
+            };
+            if ((builder.Scheme == Uri.UriSchemeHttp && builder.Port == 80) ||
+                (builder.Scheme == Uri.UriSchemeHttps && builder.Port == 443))
+            {
+                builder.Port = -1;
+            }
+            return builder.Uri.ToString().ToLowerInvariant();
+        }
+        catch
+        {
+            return url.ToLowerInvariant();
+        }
+    }
+
+    private static string ExtractParameter(Finding f)
+    {
+        try
+        {
+            if (f.Meta is null) return "-";
+            var root = f.Meta.RootElement;
+            if (root.ValueKind == JsonValueKind.Object &&
+                root.TryGetProperty("parameter", out var paramProp) &&
+                paramProp.ValueKind == JsonValueKind.String)
+            {
+                var value = paramProp.GetString();
+                return string.IsNullOrWhiteSpace(value) ? "-" : value!.Trim();
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+        return "-";
+    }
+
+    private static bool IsSafeSeverity(string severity)
+    {
+        return string.Equals(severity, "info", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(severity, "warn", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ComputeFingerprint(string targetUrl, Finding f)
+    {
+        var ruleId = f.RuleId ?? string.Empty;
+        var canonicalUrl = CanonicalizeUrl(targetUrl);
+        var parameter = ExtractParameter(f);
+        var evidenceKey = ExtractEvidenceKey(f);
+
+        var raw = $"{ruleId}|{canonicalUrl}|{parameter}|{evidenceKey}";
+        using var sha = SHA256.Create();
+        var bytes = System.Text.Encoding.UTF8.GetBytes(raw);
+        var hash = sha.ComputeHash(bytes);
+        return Convert.ToHexString(hash);
+    }
+
+    private static string ExtractEvidenceKey(Finding f)
+    {
+        try
+        {
+            if (f.Meta is null) return $"{f.Title}|{f.Detail}".Trim();
+            var root = f.Meta.RootElement;
+            if (root.ValueKind == JsonValueKind.Object &&
+                root.TryGetProperty("fingerprint", out var fpProp) &&
+                fpProp.ValueKind == JsonValueKind.String)
+            {
+                var value = fpProp.GetString();
+                if (!string.IsNullOrWhiteSpace(value)) return value!;
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+
+        return $"{f.Title}|{f.Detail}".Trim();
     }
 }

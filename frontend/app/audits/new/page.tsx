@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { apiBaseUrl, apiRequest } from "../../../lib/api";
+import { useRouter, useSearchParams } from "next/navigation";
+import { apiBaseUrl, apiRequest, ApiError } from "../../../lib/api";
 import { logError } from "../../../utils/errorHandler";
 import { ProtectedRoute } from "../../../components/ProtectedRoute";
 import { AuditListTable, AuditSummaryRow } from "../../../components/AuditListTable";
+import { ErrorState } from "../../../components/ErrorState";
+import { LoadingState } from "../../../components/LoadingState";
 
 function NewAuditPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [audits, setAudits] = useState<AuditSummaryRow[]>([]);
   const [url, setUrl] = useState("");
   const [useCredentials, setUseCredentials] = useState(false);
@@ -16,7 +19,7 @@ function NewAuditPageInner() {
   const [password, setPassword] = useState("");
   const [twoFactorNote, setTwoFactorNote] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ statusCode?: number; message: string } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -28,6 +31,14 @@ function NewAuditPageInner() {
       }
     })();
   }, [router]);
+
+  // URL parametresinden (targets sayfasından) gelen hedefi başlangıç değeri olarak ata.
+  useEffect(() => {
+    const initialUrl = searchParams.get("targetUrl");
+    if (initialUrl) {
+      setUrl(initialUrl);
+    }
+  }, [searchParams]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -54,12 +65,28 @@ function NewAuditPageInner() {
       });
 
       setAudits(prev => [created, ...prev]);
-      setUrl("");
       setUsername("");
       setPassword("");
       setTwoFactorNote("");
+
+      // Yeni denetim başarıyla oluşturulduktan sonra detay sayfasına git.
+      router.push(`/audits/${created.id}`);
     } catch (err: any) {
-      setError(err.message ?? "Bilinmeyen hata.");
+      if (err instanceof ApiError) {
+        const message =
+          err.status === 401
+            ? "Oturumun geçersiz. Tekrar giriş yap."
+            : err.status === 403
+            ? "Bu kaynağa erişim iznin yok."
+            : err.status === 429
+            ? "Çok fazla istek. Biraz sonra tekrar dene."
+            : err.status >= 500
+            ? "Sunucu hatası. Tekrar dene."
+            : err.message || "Denetim oluşturulurken bir hata oluştu.";
+        setError({ statusCode: err.status, message });
+      } else {
+        setError({ message: "Bağlantı sorunu." });
+      }
     } finally {
       setLoading(false);
     }
@@ -119,8 +146,29 @@ function NewAuditPageInner() {
                 </label>
               </div>
             )}
-            {error && <div className="error">{error}</div>}
-            <button type="submit" disabled={loading} className="primary-button">
+            {error && (
+              <ErrorState
+                statusCode={error.statusCode}
+                title="Denetim oluşturulamadı"
+                description={error.message}
+                actions={[
+                  {
+                    label: "Tekrar dene",
+                    onClick: (e) => {
+                      // form submit butonuna bastıkça handleCreate tekrar çalışır, ekstra bir şey yapmaya gerek yok
+                      (e.currentTarget as HTMLButtonElement).form?.requestSubmit();
+                    },
+                    variant: "primary",
+                  },
+                ]}
+              />
+            )}
+            <button
+              type="submit"
+              disabled={loading}
+              className="primary-button"
+              aria-label={loading ? "Denetim isteği gönderiliyor" : "Yeni denetim başlat"}
+            >
               {loading ? "Gönderiliyor..." : "Audit Başlat"}
             </button>
           </form>

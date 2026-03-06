@@ -7,6 +7,7 @@ using KamuAudit.Api.Infrastructure.Auth;
 using KamuAudit.Api.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.AspNetCore.RateLimiting;
@@ -35,10 +36,40 @@ public sealed class AuthController : ControllerBase
     {
         var role = request.Role?.Trim() ?? "QA";
         if (!AllowedRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
-            return BadRequest("Role must be one of: " + string.Join(", ", AllowedRoles));
+        {
+            var factory = HttpContext.RequestServices.GetRequiredService<ProblemDetailsFactory>();
+            var problem = factory.CreateProblemDetails(
+                HttpContext,
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Invalid role",
+                detail: "Role must be one of: " + string.Join(", ", AllowedRoles),
+                instance: HttpContext.Request.Path);
+            problem.Extensions["errorCode"] = "AUTH_INVALID_ROLE";
+
+            return new ObjectResult(problem)
+            {
+                StatusCode = problem.Status,
+                ContentTypes = { "application/problem+json" }
+            };
+        }
 
         if (await _db.Users.AnyAsync(u => u.Email == request.Email.Trim(), cancellationToken))
-            return Conflict("Email already registered.");
+        {
+            var factory = HttpContext.RequestServices.GetRequiredService<ProblemDetailsFactory>();
+            var problem = factory.CreateProblemDetails(
+                HttpContext,
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Email already registered",
+                detail: "A user with this email already exists.",
+                instance: HttpContext.Request.Path);
+            problem.Extensions["errorCode"] = "AUTH_EMAIL_CONFLICT";
+
+            return new ObjectResult(problem)
+            {
+                StatusCode = problem.Status,
+                ContentTypes = { "application/problem+json" }
+            };
+        }
 
         var hasher = new Microsoft.AspNetCore.Identity.PasswordHasher<User>();
         var user = new User
@@ -62,12 +93,42 @@ public sealed class AuthController : ControllerBase
     {
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == request.Email.Trim().ToLowerInvariant(), cancellationToken);
         if (user is null)
-            return Unauthorized("Invalid email or password.");
+        {
+            var factory = HttpContext.RequestServices.GetRequiredService<ProblemDetailsFactory>();
+            var problem = factory.CreateProblemDetails(
+                HttpContext,
+                statusCode: StatusCodes.Status401Unauthorized,
+                title: "Invalid credentials",
+                detail: "Invalid email or password.",
+                instance: HttpContext.Request.Path);
+            problem.Extensions["errorCode"] = "AUTH_INVALID_CREDENTIALS";
+
+            return new ObjectResult(problem)
+            {
+                StatusCode = problem.Status,
+                ContentTypes = { "application/problem+json" }
+            };
+        }
 
         var hasher = new Microsoft.AspNetCore.Identity.PasswordHasher<User>();
         var result = hasher.VerifyHashedPassword(null!, user.PasswordHash, request.Password);
         if (result == Microsoft.AspNetCore.Identity.PasswordVerificationResult.Failed)
-            return Unauthorized("Invalid email or password.");
+        {
+            var factory = HttpContext.RequestServices.GetRequiredService<ProblemDetailsFactory>();
+            var problem = factory.CreateProblemDetails(
+                HttpContext,
+                statusCode: StatusCodes.Status401Unauthorized,
+                title: "Invalid credentials",
+                detail: "Invalid email or password.",
+                instance: HttpContext.Request.Path);
+            problem.Extensions["errorCode"] = "AUTH_INVALID_CREDENTIALS";
+
+            return new ObjectResult(problem)
+            {
+                StatusCode = problem.Status,
+                ContentTypes = { "application/problem+json" }
+            };
+        }
 
         var token = GenerateJwt(user);
         var expiresAt = DateTime.UtcNow.AddHours(_jwt.ExpiryHours);
@@ -81,11 +142,41 @@ public sealed class AuthController : ControllerBase
     {
         var idClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (!Guid.TryParse(idClaim, out var userId))
-            return Unauthorized();
+        {
+            var factory = HttpContext.RequestServices.GetRequiredService<ProblemDetailsFactory>();
+            var problem = factory.CreateProblemDetails(
+                HttpContext,
+                statusCode: StatusCodes.Status401Unauthorized,
+                title: "Unauthorized",
+                detail: "Invalid user identifier in token.",
+                instance: HttpContext.Request.Path);
+            problem.Extensions["errorCode"] = "AUTH_INVALID_SUB";
+
+            return new ObjectResult(problem)
+            {
+                StatusCode = problem.Status,
+                ContentTypes = { "application/problem+json" }
+            };
+        }
 
         var user = await _db.Users.FindAsync([userId], cancellationToken);
         if (user is null)
-            return Unauthorized();
+        {
+            var factory = HttpContext.RequestServices.GetRequiredService<ProblemDetailsFactory>();
+            var problem = factory.CreateProblemDetails(
+                HttpContext,
+                statusCode: StatusCodes.Status401Unauthorized,
+                title: "Unauthorized",
+                detail: "User not found.",
+                instance: HttpContext.Request.Path);
+            problem.Extensions["errorCode"] = "AUTH_USER_NOT_FOUND";
+
+            return new ObjectResult(problem)
+            {
+                StatusCode = problem.Status,
+                ContentTypes = { "application/problem+json" }
+            };
+        }
 
         return Ok(new { user.Id, user.Email, user.Role, user.CreatedAt });
     }

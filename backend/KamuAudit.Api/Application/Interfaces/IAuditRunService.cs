@@ -5,14 +5,16 @@ namespace KamuAudit.Api.Application.Interfaces;
 
 public interface IAuditRunService
 {
-    Task<(AuditRunDetailDto? Detail, string? Error)> CreateAsync(
+    Task<(AuditRunDetailDto? Detail, string? Error, bool FromCache)> CreateAsync(
         Guid userId,
         CreateAuditRunRequest request,
+        string? idempotencyKey,
         CancellationToken cancellationToken = default);
 
-    Task<(AuditRunDetailDto? Detail, string? Error)> CreateWithCredentialsAsync(
+    Task<(AuditRunDetailDto? Detail, string? Error, bool FromCache)> CreateWithCredentialsAsync(
         Guid userId,
         CreateAuditWithCredentialsRequest request,
+        string? idempotencyKey,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<AuditRunSummaryDto>> GetListAsync(
@@ -34,8 +36,13 @@ public interface IAuditRunService
         Guid auditId,
         int page,
         int pageSize,
-        string? severity,
-        string? category,
+        string[]? severity,
+        string[]? category,
+        string[]? status,
+        string[]? skipReason,
+        string? url,
+        double? minConfidence,
+        string? sort,
         CancellationToken cancellationToken = default);
 
     Task<(PagedGapsResponse? Response, bool NotFound)> GetGapsAsync(
@@ -47,6 +54,15 @@ public interface IAuditRunService
         CancellationToken cancellationToken = default);
 
     Task<(AuditSummaryResponse? Response, bool NotFound)> GetSummaryAsync(
+        Guid auditId,
+        Guid? userId,
+        bool isAdmin,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns a consolidated JSON report for the given audit run (summary + breakdown + evidence links).
+    /// </summary>
+    Task<(AuditReportResponse? Report, bool NotFound)> GetReportAsync(
         Guid auditId,
         Guid? userId,
         bool isAdmin,
@@ -67,6 +83,16 @@ public interface IAuditRunService
     /// </summary>
     Task<(string? Csv, bool NotFound)> GetGapsCsvAsync(
         Guid auditId,
+        Guid? userId,
+        bool isAdmin,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Attempts to cancel a queued audit run owned by the given user (or any run for admins).
+    /// Returns false when the run does not exist or cannot be canceled.
+    /// </summary>
+    Task<bool> CancelAsync(
+        Guid id,
         Guid? userId,
         bool isAdmin,
         CancellationToken cancellationToken = default);

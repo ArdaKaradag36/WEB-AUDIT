@@ -4,6 +4,16 @@
  */
 export type FindingSeverity = "critical" | "error" | "warn" | "info";
 
+export type FindingStatus = "OK" | "SKIPPED" | "FAILED" | "INFO";
+
+export type SkipReason =
+  | "NETWORK_POLICY"
+  | "RATE_LIMIT"
+  | "TIMEOUT"
+  | "AUTH_BLOCKED"
+  | "ROBOTS"
+  | "OTHER";
+
 export type FindingCategory =
   | "console"
   | "network"
@@ -11,7 +21,10 @@ export type FindingCategory =
   | "form"
   | "security_headers"
   | "ui_coverage"
-  | "blocker";
+  | "blocker"
+  | "cookies"
+  | "cors"
+  | "mixed_content";
 
 export type Finding = {
   ruleId: string;
@@ -20,6 +33,12 @@ export type Finding = {
   title: string;
   detail?: string;
   remediation?: string;
+  /** Optional confidence score in [0,1]; higher means more certain. */
+  confidence?: number;
   evidence?: string[];
   meta?: Record<string, unknown>;
+  /** Execution-level status (OK/SKIPPED/FAILED/INFO). Defaults to OK if omitted. */
+  status?: FindingStatus;
+  /** Optional skip reason when status === "SKIPPED". */
+  skipReason?: SkipReason;
 };

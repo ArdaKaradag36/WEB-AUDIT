@@ -19,6 +19,7 @@ public sealed class AuditRunnerBackgroundService : BackgroundService
     private readonly ILogger<AuditRunnerBackgroundService> _logger;
     private readonly AuditRunnerOptions _options;
     private readonly ActivitySource _activitySource;
+    private readonly string _workerId;
 
     public AuditRunnerBackgroundService(
         IServiceScopeFactory scopeFactory,
@@ -30,6 +31,7 @@ public sealed class AuditRunnerBackgroundService : BackgroundService
         _logger = logger;
         _options = options.Value;
         _activitySource = activitySource;
+        _workerId = $"{Environment.MachineName}-{Guid.NewGuid():N}";
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -50,7 +52,8 @@ public sealed class AuditRunnerBackgroundService : BackgroundService
                     continue;
                 }
 
-                var next = await TryReserveOneAsync(db, stoppingToken);
+                var leaseDuration = TimeSpan.FromSeconds(Math.Max(30, _options.MaxRunDurationMinutes * 60));
+                var next = await AuditRunLeasing.TryReserveNextAsync(db, _workerId, leaseDuration, stoppingToken);
                 if (next is null)
                 {
                     await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
@@ -70,8 +73,8 @@ public sealed class AuditRunnerBackgroundService : BackgroundService
                 using (LogContext.PushProperty("TraceId", Activity.Current?.TraceId.ToString() ?? string.Empty))
                 using (LogContext.PushProperty("SpanId", Activity.Current?.SpanId.ToString() ?? string.Empty))
                 {
-                _logger.LogInformation("Starting audit run {AuditRunId} for {TargetUrl} (attempt {Attempt})",
-                    next.Id, next.TargetUrl, next.AttemptCount + 1);
+                _logger.LogInformation("Starting audit run {AuditRunId} for {TargetUrl} (attempt {Attempt}) (Worker={WorkerId})",
+                    next.Id, next.TargetUrl, next.AttemptCount + 1, _workerId);
                 AuditMetrics.IncrementRunsStarted();
 
                 var runDirRelative = Path.Combine("reports", "runs", next.Id.ToString("N"));
@@ -99,7 +102,20 @@ public sealed class AuditRunnerBackgroundService : BackgroundService
                     };
                 }
 
+                using var leaseCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                var leaseRefreshTask = RefreshLeaseAsync(next.Id, leaseDuration, leaseCts.Token);
+
                 var success = await runner.RunAsync(next, credentialContext, runDirRelative, stoppingToken);
+
+                leaseCts.Cancel();
+                try
+                {
+                    await leaseRefreshTask;
+                }
+                catch (OperationCanceledException)
+                {
+                    // expected when lease refresh loop is cancelled
+                }
 
                 var finishedAt = DateTimeOffset.UtcNow;
                 next.FinishedAt = finishedAt;
@@ -167,49 +183,41 @@ public sealed class AuditRunnerBackgroundService : BackgroundService
         _logger.LogInformation("AuditRunnerBackgroundService stopping.");
     }
 
-    /// <summary>Atomically reserve one queued job using SELECT FOR UPDATE SKIP LOCKED.</summary>
-    private static async Task<AuditRun?> TryReserveOneAsync(KamuAuditDbContext db, CancellationToken cancellationToken)
+    private async Task RefreshLeaseAsync(Guid auditRunId, TimeSpan leaseDuration, CancellationToken cancellationToken)
     {
-        await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
-        try
+        // Heartbeat: periodically extend LeaseUntil for the currently owned run.
+        var interval = TimeSpan.FromSeconds(Math.Max(10, leaseDuration.TotalSeconds / 2));
+
+        while (!cancellationToken.IsCancellationRequested)
         {
-            var now = DateTimeOffset.UtcNow;
-            var id = await db.Database
-                .SqlQueryRaw<Guid>("""
-                    SELECT "Id" AS "Value" FROM audit_runs
-                    WHERE "Status" = 'queued'
-                      AND ("RetryAfterUtc" IS NULL OR "RetryAfterUtc" <= {0})
-                    ORDER BY "StartedAt" NULLS LAST
-                    LIMIT 1
-                    FOR UPDATE SKIP LOCKED
-                    """, now)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (id == default)
+            try
             {
-                await tx.RollbackAsync(cancellationToken);
-                return null;
+                await Task.Delay(interval, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
             }
 
-            var next = await db.AuditRuns.FindAsync([id], cancellationToken);
-            if (next is null)
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<KamuAuditDbContext>();
+
+            var run = await db.AuditRuns.FirstOrDefaultAsync(a => a.Id == auditRunId && a.LeaseOwner == _workerId, cancellationToken);
+            if (run is null)
             {
-                await tx.RollbackAsync(cancellationToken);
-                return null;
+                // Run deleted or lease taken over.
+                break;
             }
 
-            next.Status = "running";
-            next.StartedAt = DateTimeOffset.UtcNow;
-            next.RetryAfterUtc = null;
+            if (string.Equals(run.Status, "completed", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(run.Status, "failed", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(run.Status, "canceled", StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
 
+            run.LeaseUntil = DateTimeOffset.UtcNow.Add(leaseDuration);
             await db.SaveChangesAsync(cancellationToken);
-            await tx.CommitAsync(cancellationToken);
-            return next;
-        }
-        catch
-        {
-            await tx.RollbackAsync(cancellationToken);
-            throw;
         }
     }
 }

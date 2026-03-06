@@ -9,12 +9,17 @@ using KamuAudit.Api.Infrastructure.Persistence;
 using KamuAudit.Api.Infrastructure.Runner;
 using KamuAudit.Api.Infrastructure;
 using KamuAudit.Api.Infrastructure.Security;
+using KamuAudit.Api.Infrastructure.Idempotency;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Formatting.Compact;
 using Serilog.Context;
+using System.Security.Claims;
 
 // Bu dosya, ASP.NET Core Web API giriş noktasını ve servis konfigürasyonunu içerir.
 
@@ -34,9 +39,10 @@ builder.Services.AddDb(builder.Configuration);
 // DataProtection (used for encrypting sensitive credentials)
 builder.Services.AddDataProtection();
 
-// Runner konfigürasyonu ve background servis
+// Runner konfigürasyonu ve background servisler
 builder.Services.Configure<AuditRunnerOptions>(builder.Configuration.GetSection("Runner"));
 builder.Services.Configure<RetentionOptions>(builder.Configuration.GetSection("Retention"));
+builder.Services.Configure<IdempotencyOptions>(builder.Configuration.GetSection("Idempotency"));
 builder.Services.AddScoped<IAuditRunService, AuditRunService>();
 builder.Services.AddSingleton<ICredentialProtector, DataProtectionCredentialProtector>();
 builder.Services.AddScoped<IAuditRunner, NodeAuditRunner>();
@@ -44,6 +50,7 @@ builder.Services.AddScoped<IAuditResultIngestor, AuditResultIngestor>();
 builder.Services.AddScoped<IReportingService, ReportingService>();
 builder.Services.AddHostedService<AuditRunnerBackgroundService>();
 builder.Services.AddHostedService<RetentionCleanupBackgroundService>();
+builder.Services.AddHostedService<IdempotencyCleanupBackgroundService>();
 
 // OpenTelemetry tracing & ActivitySource
 builder.Services.AddObservability(builder.Configuration);
@@ -77,8 +84,22 @@ if (corsEnabled && allowedOrigins.Length > 0)
 // JWT auth & authorization
 builder.Services.AddJwtAuth(builder.Configuration);
 
-// Controller tabanlı API
-builder.Services.AddControllers();
+// ProblemDetails factory + controller tabanlı API
+builder.Services.AddSingleton<ProblemDetailsFactory, KamuAudit.Api.Infrastructure.Errors.ApiProblemDetailsFactory>();
+builder.Services.AddControllers()
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var factory = context.HttpContext.RequestServices.GetRequiredService<ProblemDetailsFactory>();
+            var problem = factory.CreateValidationProblemDetails(context.HttpContext, context.ModelState);
+            return new ObjectResult(problem)
+            {
+                StatusCode = problem.Status ?? StatusCodes.Status400BadRequest,
+                ContentTypes = { "application/problem+json" }
+            };
+        };
+    });
 
 // Swagger (only for development; with JWT auth support)
 builder.Services.AddEndpointsApiExplorer();
@@ -118,21 +139,34 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-// Add TraceId/SpanId to Serilog log context for HTTP requests
+// Attach standard logging scope and record simple API latency metrics.
 app.Use(async (ctx, next) =>
 {
     var activity = Activity.Current;
-    if (activity is not null)
+    var traceId = activity?.TraceId.ToString() ?? ctx.TraceIdentifier;
+    var spanId = activity?.SpanId.ToString() ?? string.Empty;
+
+    var userId = ctx.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+    ctx.Request.RouteValues.TryGetValue("id", out var auditIdObj);
+    var auditRunId = auditIdObj?.ToString();
+
+    var stopwatch = Stopwatch.StartNew();
+
+    using (LogContext.PushProperty("Service", "api"))
+    using (LogContext.PushProperty("TraceId", traceId))
+    using (LogContext.PushProperty("SpanId", spanId))
+    using (LogContext.PushProperty("UserId", userId ?? string.Empty))
+    using (LogContext.PushProperty("AuditRunId", auditRunId ?? string.Empty))
     {
-        using (LogContext.PushProperty("TraceId", activity.TraceId.ToString()))
-        using (LogContext.PushProperty("SpanId", activity.SpanId.ToString()))
+        try
         {
             await next();
         }
-    }
-    else
-    {
-        await next();
+        finally
+        {
+            stopwatch.Stop();
+            AuditMetrics.AddApiRequestDuration(stopwatch.ElapsedMilliseconds);
+        }
     }
 });
 

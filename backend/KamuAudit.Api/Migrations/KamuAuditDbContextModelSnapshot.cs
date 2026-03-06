@@ -23,6 +23,28 @@ namespace KamuAudit.Api.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("KamuAudit.Api.Domain.Entities.AuditCoverage", b =>
+                {
+                    b.Property<Guid>("AuditRunId")
+                        .HasColumnType("uuid");
+
+                    b.Property<double>("CoverageRatio")
+                        .HasColumnType("double precision");
+
+                    b.Property<int>("SkippedElements")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TestedElements")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TotalElements")
+                        .HasColumnType("integer");
+
+                    b.HasKey("AuditRunId");
+
+                    b.ToTable("audit_coverage", (string)null);
+                });
+
             modelBuilder.Entity("KamuAudit.Api.Domain.Entities.AuditRun", b =>
                 {
                     b.Property<Guid>("Id")
@@ -38,6 +60,11 @@ namespace KamuAudit.Api.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("NOW()");
+
                     b.Property<long?>("DurationMs")
                         .HasColumnType("bigint");
 
@@ -47,6 +74,16 @@ namespace KamuAudit.Api.Migrations
                     b.Property<string>("LastError")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("LeaseOwner")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset?>("LeaseUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("LeaseVersion")
+                        .HasColumnType("integer");
 
                     b.Property<int?>("LinkBroken")
                         .HasColumnType("integer");
@@ -99,6 +136,8 @@ namespace KamuAudit.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("LeaseUntil");
+
                     b.HasIndex("Status");
 
                     b.HasIndex("SystemId");
@@ -143,6 +182,23 @@ namespace KamuAudit.Api.Migrations
                     b.ToTable("audit_target_credentials", (string)null);
                 });
 
+            modelBuilder.Entity("KamuAudit.Api.Domain.Entities.ElementHistory", b =>
+                {
+                    b.Property<string>("ElementHash")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("FailCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PassCount")
+                        .HasColumnType("integer");
+
+                    b.HasKey("ElementHash");
+
+                    b.ToTable("element_history", (string)null);
+                });
+
             modelBuilder.Entity("KamuAudit.Api.Domain.Entities.Finding", b =>
                 {
                     b.Property<Guid>("Id")
@@ -156,6 +212,9 @@ namespace KamuAudit.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
+
+                    b.Property<double?>("Confidence")
+                        .HasColumnType("double precision");
 
                     b.Property<string>("Detail")
                         .IsRequired()
@@ -178,6 +237,15 @@ namespace KamuAudit.Api.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<string>("SkipReason")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -188,6 +256,129 @@ namespace KamuAudit.Api.Migrations
                     b.HasIndex("AuditRunId");
 
                     b.ToTable("findings", (string)null);
+                });
+
+            modelBuilder.Entity("KamuAudit.Api.Domain.Entities.FindingInstance", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AuditRunId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("DetectedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("FindingTemplateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Parameter")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("SkipReason")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuditRunId");
+
+                    b.HasIndex("FindingTemplateId");
+
+                    b.ToTable("finding_instances", (string)null);
+                });
+
+            modelBuilder.Entity("KamuAudit.Api.Domain.Entities.FindingTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("AutoRiskLowerSuggested")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("CanonicalUrl")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Fingerprint")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("FirstSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<JsonDocument>("Meta")
+                        .HasColumnType("jsonb");
+
+                    b.Property<long>("OccurrenceCount")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Parameter")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("RecentSafeOccurrences")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Remediation")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("RuleId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("SkipReason")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Fingerprint")
+                        .IsUnique();
+
+                    b.ToTable("finding_templates", (string)null);
                 });
 
             modelBuilder.Entity("KamuAudit.Api.Domain.Entities.Gap", b =>
@@ -234,6 +425,81 @@ namespace KamuAudit.Api.Migrations
                     b.HasIndex("AuditRunId");
 
                     b.ToTable("gaps", (string)null);
+                });
+
+            modelBuilder.Entity("KamuAudit.Api.Domain.Entities.GapTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AuditRunId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ExampleUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("HumanName")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("OccurrenceCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ReasonCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("RiskLevel")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuditRunId");
+
+                    b.ToTable("gap_templates", (string)null);
+                });
+
+            modelBuilder.Entity("KamuAudit.Api.Domain.Entities.IdempotencyKey", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AuditRunId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuditRunId");
+
+                    b.HasIndex("UserId", "Key")
+                        .IsUnique();
+
+                    b.ToTable("idempotency_keys", (string)null);
                 });
 
             modelBuilder.Entity("KamuAudit.Api.Domain.Entities.SystemEntity", b =>
@@ -295,6 +561,17 @@ namespace KamuAudit.Api.Migrations
                     b.ToTable("users", (string)null);
                 });
 
+            modelBuilder.Entity("KamuAudit.Api.Domain.Entities.AuditCoverage", b =>
+                {
+                    b.HasOne("KamuAudit.Api.Domain.Entities.AuditRun", "AuditRun")
+                        .WithOne()
+                        .HasForeignKey("KamuAudit.Api.Domain.Entities.AuditCoverage", "AuditRunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("AuditRun");
+                });
+
             modelBuilder.Entity("KamuAudit.Api.Domain.Entities.AuditRun", b =>
                 {
                     b.HasOne("KamuAudit.Api.Domain.Entities.SystemEntity", "System")
@@ -334,6 +611,25 @@ namespace KamuAudit.Api.Migrations
                     b.Navigation("AuditRun");
                 });
 
+            modelBuilder.Entity("KamuAudit.Api.Domain.Entities.FindingInstance", b =>
+                {
+                    b.HasOne("KamuAudit.Api.Domain.Entities.AuditRun", "AuditRun")
+                        .WithMany()
+                        .HasForeignKey("AuditRunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("KamuAudit.Api.Domain.Entities.FindingTemplate", "FindingTemplate")
+                        .WithMany()
+                        .HasForeignKey("FindingTemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("AuditRun");
+
+                    b.Navigation("FindingTemplate");
+                });
+
             modelBuilder.Entity("KamuAudit.Api.Domain.Entities.Gap", b =>
                 {
                     b.HasOne("KamuAudit.Api.Domain.Entities.AuditRun", "AuditRun")
@@ -343,6 +639,36 @@ namespace KamuAudit.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("AuditRun");
+                });
+
+            modelBuilder.Entity("KamuAudit.Api.Domain.Entities.GapTemplate", b =>
+                {
+                    b.HasOne("KamuAudit.Api.Domain.Entities.AuditRun", "AuditRun")
+                        .WithMany()
+                        .HasForeignKey("AuditRunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("AuditRun");
+                });
+
+            modelBuilder.Entity("KamuAudit.Api.Domain.Entities.IdempotencyKey", b =>
+                {
+                    b.HasOne("KamuAudit.Api.Domain.Entities.AuditRun", "AuditRun")
+                        .WithMany()
+                        .HasForeignKey("AuditRunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("KamuAudit.Api.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("AuditRun");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("KamuAudit.Api.Domain.Entities.AuditRun", b =>

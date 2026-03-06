@@ -7,6 +7,18 @@ Ama **sadece bu dosyayı izleyerek** de sistemi çalışır hale getirebilmelisi
 
 ---
 
+### Şu anki durum (local health)
+
+- Backend (`dotnet build`, `dotnet test`) ve runner (`npm test`) tüm testleri şu an **geçiyor**.
+- Frontend tarafında `npm run lint` ve `npm run build` CI’da yeşil; lokal olarak da bu dosyadaki adımları izleyerek sorunsuz ayağa kalkması bekleniyor.
+- Eğer adımları izlerken bir hata veya boş ekran görürsen, lütfen:
+  - Hangi komutun hata verdiğini,
+  - Terminal/log çıktısını
+  - Ve mümkünse hangi URL’de/paydload’da olduğunu
+  not edip bana ilet; birlikte kalıcı bir fix’e çeviririz.
+
+---
+
 ### 0. Gerekli Kurulumlar (Bir Kere Yapılır)
 
 - **Git**  

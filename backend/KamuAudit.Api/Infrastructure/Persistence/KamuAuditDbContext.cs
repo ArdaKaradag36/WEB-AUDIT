@@ -18,11 +18,14 @@ public sealed class KamuAuditDbContext : DbContext
     public DbSet<SystemEntity> Systems => Set<SystemEntity>();
     public DbSet<AuditRun> AuditRuns => Set<AuditRun>();
     public DbSet<Finding> Findings => Set<Finding>();
+    public DbSet<FindingTemplate> FindingTemplates => Set<FindingTemplate>();
+    public DbSet<FindingInstance> FindingInstances => Set<FindingInstance>();
     public DbSet<Gap> Gaps => Set<Gap>();
     public DbSet<AuditTargetCredential> AuditTargetCredentials => Set<AuditTargetCredential>();
     public DbSet<GapTemplate> GapTemplates => Set<GapTemplate>();
     public DbSet<AuditCoverage> AuditCoverages => Set<AuditCoverage>();
     public DbSet<ElementHistory> ElementHistory => Set<ElementHistory>();
+    public DbSet<IdempotencyKey> IdempotencyKeys => Set<IdempotencyKey>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -57,6 +60,11 @@ public sealed class KamuAuditDbContext : DbContext
                 .WithOne(a => a.User)
                 .HasForeignKey(a => a.UserId)
                 .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasMany<IdempotencyKey>()
+                .WithOne(k => k.User!)
+                .HasForeignKey(k => k.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // Systems
@@ -84,6 +92,9 @@ public sealed class KamuAuditDbContext : DbContext
             entity.ToTable("audit_runs");
 
             entity.HasKey(a => a.Id);
+
+            entity.Property(a => a.CreatedAt)
+                .HasDefaultValueSql("NOW()");
 
             entity.Property(a => a.TargetUrl)
                 .IsRequired()
@@ -115,6 +126,13 @@ public sealed class KamuAuditDbContext : DbContext
 
             entity.Property(a => a.RetryAfterUtc);
 
+            entity.Property(a => a.LeaseOwner)
+                .HasMaxLength(200);
+
+            entity.Property(a => a.LeaseUntil);
+
+            entity.Property(a => a.LeaseVersion);
+
             // Error triage fields are currently not mapped to the database schema;
             // they are used only in-memory by the runner and DTOs.
             entity.Ignore(a => a.ErrorType);
@@ -124,6 +142,7 @@ public sealed class KamuAuditDbContext : DbContext
             entity.HasIndex(a => a.Status);
             entity.HasIndex(a => a.SystemId);
             entity.HasIndex(a => a.UserId);
+            entity.HasIndex(a => a.LeaseUntil);
 
             entity.HasOne(a => a.System)
                 .WithMany(s => s.AuditRuns)
@@ -131,7 +150,7 @@ public sealed class KamuAuditDbContext : DbContext
                 .OnDelete(DeleteBehavior.SetNull);
         });
 
-        // Findings
+        // Findings (per-run)
         builder.Entity<Finding>(entity =>
         {
             entity.ToTable("findings");
@@ -160,14 +179,117 @@ public sealed class KamuAuditDbContext : DbContext
             entity.Property(f => f.Remediation)
                 .HasMaxLength(2000);
 
+            entity.Property(f => f.Confidence);
+
             entity.Property(f => f.Meta)
                 .HasColumnType("jsonb");
+
+            entity.Property(f => f.Status)
+                .HasConversion<string>()
+                .IsRequired()
+                .HasMaxLength(16);
+
+            entity.Property(f => f.SkipReason)
+                .HasConversion<string>()
+                .HasMaxLength(32);
 
             entity.HasIndex(f => f.AuditRunId);
 
             entity.HasOne(f => f.AuditRun)
                 .WithMany(a => a.Findings)
                 .HasForeignKey(f => f.AuditRunId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // FindingTemplates (deduplicated by fingerprint across runs)
+        builder.Entity<FindingTemplate>(entity =>
+        {
+            entity.ToTable("finding_templates");
+
+            entity.HasKey(t => t.Id);
+
+            entity.Property(t => t.Fingerprint)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(t => t.RuleId)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(t => t.Severity)
+                .IsRequired()
+                .HasMaxLength(32);
+
+            entity.Property(t => t.Category)
+                .IsRequired()
+                .HasMaxLength(64);
+
+            entity.Property(t => t.Title)
+                .IsRequired()
+                .HasMaxLength(500);
+
+            entity.Property(t => t.CanonicalUrl)
+                .IsRequired()
+                .HasMaxLength(1000);
+
+            entity.Property(t => t.Parameter)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(t => t.Remediation)
+                .HasMaxLength(2000);
+
+            entity.Property(t => t.Meta)
+                .HasColumnType("jsonb");
+
+            entity.Property(t => t.Status)
+                .HasConversion<string>()
+                .IsRequired()
+                .HasMaxLength(16);
+
+            entity.Property(t => t.SkipReason)
+                .HasConversion<string>()
+                .HasMaxLength(32);
+
+            entity.HasIndex(t => t.Fingerprint)
+                .IsUnique();
+        });
+
+        // FindingInstances (occurrences per run)
+        builder.Entity<FindingInstance>(entity =>
+        {
+            entity.ToTable("finding_instances");
+
+            entity.HasKey(i => i.Id);
+
+            entity.Property(i => i.Url)
+                .IsRequired()
+                .HasMaxLength(1000);
+
+            entity.Property(i => i.Parameter)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(i => i.Status)
+                .HasConversion<string>()
+                .IsRequired()
+                .HasMaxLength(16);
+
+            entity.Property(i => i.SkipReason)
+                .HasConversion<string>()
+                .HasMaxLength(32);
+
+            entity.HasIndex(i => i.AuditRunId);
+            entity.HasIndex(i => i.FindingTemplateId);
+
+            entity.HasOne(i => i.FindingTemplate)
+                .WithMany()
+                .HasForeignKey(i => i.FindingTemplateId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(i => i.AuditRun)
+                .WithMany()
+                .HasForeignKey(i => i.AuditRunId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -297,6 +419,31 @@ public sealed class KamuAuditDbContext : DbContext
 
             entity.Property(e => e.ElementHash)
                 .HasMaxLength(500);
+        });
+
+        // Idempotency keys
+        builder.Entity<IdempotencyKey>(entity =>
+        {
+            entity.ToTable("idempotency_keys");
+
+            entity.HasKey(k => k.Id);
+
+            entity.Property(k => k.Key)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(k => k.RequestHash)
+                .IsRequired()
+                .HasMaxLength(128);
+
+            entity.Property(k => k.CreatedAt)
+                .IsRequired();
+
+            entity.Property(k => k.ExpiresAt)
+                .IsRequired();
+
+            entity.HasIndex(k => new { k.UserId, k.Key })
+                .IsUnique();
         });
     }
 }

@@ -76,6 +76,24 @@ public sealed class FindingJson
 
     [JsonPropertyName("meta")]
     public JsonElement? Meta { get; set; }
+
+    /// <summary>
+    /// Optional execution-level status from runner (OK/SKIPPED/FAILED/INFO).
+    /// </summary>
+    [JsonPropertyName("status")]
+    public string? Status { get; set; }
+
+    /// <summary>
+    /// Optional skip reason when status == SKIPPED.
+    /// </summary>
+    [JsonPropertyName("skipReason")]
+    public string? SkipReason { get; set; }
+
+    /// <summary>
+    /// Optional numeric confidence score in [0,1].
+    /// </summary>
+    [JsonPropertyName("confidence")]
+    public double? Confidence { get; set; }
 }
 
 public sealed class MetricsJson
@@ -106,6 +124,24 @@ public sealed class MetricsJson
 
     [JsonPropertyName("realFailures")]
     public int? RealFailures { get; set; }
+
+    /// <summary>
+    /// Total pages scanned during crawl/audit.
+    /// </summary>
+    [JsonPropertyName("pagesScanned")]
+    public int? PagesScanned { get; set; }
+
+    /// <summary>
+    /// Total HTTP requests observed during the run.
+    /// </summary>
+    [JsonPropertyName("requestsTotal")]
+    public int? RequestsTotal { get; set; }
+
+    /// <summary>
+    /// Findings grouped by severity for quick scoring.
+    /// </summary>
+    [JsonPropertyName("findingsBySeverity")]
+    public Dictionary<string, int>? FindingsBySeverity { get; set; }
 }
 
 public sealed class UiCoverageSummaryJson

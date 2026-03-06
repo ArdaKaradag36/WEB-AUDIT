@@ -21,7 +21,7 @@ export type Artifact = {
 };
 
 export type AuditReport = {
-  schemaVersion: "1.0";
+  schemaVersion: "1.1";
   runnerVersion: string;
   runId: string;
   targetUrl: string;

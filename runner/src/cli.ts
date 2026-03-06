@@ -29,6 +29,9 @@ import type { PluginContext } from "./plugins/types";
 import { runSpecFile } from "./core/runSpec";
 import { loadConfig } from "./config/loadConfig";
 import { getAuditAiProvider, writeGeneratedTests } from "./ai";
+import { logEvent, setLogContext } from "./core/log";
+import { crawlSite } from "./core/crawler/crawler";
+import type { CrawlerConfig } from "./core/crawler/types";
 
 function summarize(results: TestResult[]) {
   const count = (s: TestResult["status"]) => results.filter((r) => r.status === s).length;
@@ -118,6 +121,7 @@ async function main(): Promise<0 | 1 | 2> {
   const startedAt = new Date().toISOString();
   const finishedAt = () => new Date().toISOString();
   const runnerVersion = "1.0.0";
+  const auditRunId = process.env.KAMU_AUDIT_RUN_ID;
   let linkChecks: Awaited<ReturnType<typeof sampleLinks>> = [];
   let mainDocumentHeaders: Record<string, string> | undefined;
 
@@ -146,6 +150,20 @@ async function main(): Promise<0 | 1 | 2> {
   const pageErrors = consoleCollector.pageErrors;
   const { issues: networkIssues, stats: networkStats } = await collectNetworkIssues(page);
   const responseUrls = collectResponseUrls(page);
+
+  // Standard logging context for the whole run
+  setLogContext({
+    runId,
+    targetUrl,
+    auditRunId,
+  });
+
+  logEvent("run_started", {
+    browser: browserName,
+    headless,
+    safeMode: config.safeMode,
+    maxLinks: linkLimit,
+  });
 
   // 1) Homepage open
   let homepageLoaded = false;
@@ -190,7 +208,7 @@ async function main(): Promise<0 | 1 | 2> {
     await browser.close();
 
     const report: AuditReport = {
-      schemaVersion: "1.0",
+      schemaVersion: "1.1",
       runnerVersion,
       runId,
       targetUrl,
@@ -480,6 +498,61 @@ async function main(): Promise<0 | 1 | 2> {
     }
   }
 
+  // 4.5) Crawler – BFS crawl with budgets to increase real coverage.
+  let pagesScannedFromCrawler = 0;
+  if (!isBlocked) {
+    try {
+      const crawlerConfig: CrawlerConfig = {
+        startUrl: targetUrl,
+        budget: {
+          maxPages: config.maxLinks ?? linkLimit,
+          maxDepth: 4,
+          maxTimeMs: 60_000,
+        },
+        perHostRateLimit: {
+          maxRps: 4,
+          maxConcurrent: 2,
+        },
+        robotsPolicy: "respect",
+        sitemapPolicy: "disabled",
+        spaDiscovery: "basic",
+        queueStrategy: "bfs",
+        evidence: {
+          mode: "minimal",
+          captureConsole: false,
+          captureResponseHeaders: true,
+          captureTimings: true,
+          captureScreenshots: false,
+        },
+      };
+
+      const crawlResult = await crawlSite({ page, config: crawlerConfig, outDir: tempDir });
+      pagesScannedFromCrawler = crawlResult.pages.length;
+
+      // If crawl is heavily impacted by network policy, add a SKIPPED-style test result for visibility.
+      const skippedPages = crawlResult.pages.filter((p) => p.outcome === "SKIPPED_NETWORK_POLICY").length;
+      if (skippedPages > 0) {
+        results.push({
+          code: "CORE.CRAWLER.SKIPPED_NETWORK_POLICY",
+          title: "Crawl encountered pages skipped by network policy",
+          status: "SKIPPED",
+          meta: {
+            skippedPages,
+            totalVisited: crawlResult.stats.totalVisited,
+            networkPolicySkips: crawlResult.stats.networkPolicySkips,
+          },
+        });
+      }
+    } catch (e: any) {
+      results.push({
+        code: "CORE.CRAWLER.ERROR",
+        title: "Crawler failed unexpectedly",
+        status: "NA",
+        errorMessage: e?.message ?? "crawlSite threw",
+      });
+    }
+  }
+
   // UI inventory, safe attempts, then gaps (while page still open)
   let uiInventory: UiInventory | null = null;
   let gaps: UiGap[] = [];
@@ -639,6 +712,13 @@ async function main(): Promise<0 | 1 | 2> {
       (networkStats?.skippedNetwork ?? 0),
     retriedRequests: networkStats?.retriedRequests ?? 0,
     realFailures: networkStats?.realFailures ?? 0,
+    pagesScanned: Math.max(1, pagesScannedFromCrawler || 1),
+    requestsTotal: networkIssues.length,
+    timeouts: networkStats?.skippedNetwork ?? 0,
+    findingsBySeverity: findings.reduce<Record<string, number>>((acc, f) => {
+      acc[f.severity] = (acc[f.severity] ?? 0) + 1;
+      return acc;
+    }, {}),
   };
 
   let playwrightVersion: string | undefined;
@@ -691,7 +771,7 @@ async function main(): Promise<0 | 1 | 2> {
   }
 
   const report: AuditReport = {
-    schemaVersion: "1.0",
+    schemaVersion: "1.1",
     runnerVersion,
     runId,
     targetUrl,
@@ -725,6 +805,15 @@ async function main(): Promise<0 | 1 | 2> {
   printSummary(report);
   console.log("\nRun dir:", outDir);
   console.log("summary.json, ui-inventory.json, gaps.json, console.json, network.json, request_failed.json");
+
+  logEvent("run_completed", {
+    status: runInfo.status,
+    durationMs: metrics.durationMs,
+    pagesScanned: metrics.pagesScanned,
+    requestsTotal: metrics.requestsTotal,
+    skippedNetwork: metrics.skippedNetwork,
+    findingsBySeverity: metrics.findingsBySeverity,
+  });
 
   let exitCode: 0 | 1 | 2 = 0;
   if (strict) {
