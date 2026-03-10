@@ -2,15 +2,7 @@
 
 import { StatusBadge } from "./StatusBadge";
 import { AuditActionsMenu } from "./AuditActionsMenu";
-
-export interface AuditSummaryRow {
-  id: string;
-  targetUrl: string;
-  status: string;
-  startedAt?: string;
-  finishedAt?: string;
-  errorType?: string;
-}
+import type { AuditSummaryRow } from "../lib/types/audits";
 
 interface Props {
   audits: AuditSummaryRow[];

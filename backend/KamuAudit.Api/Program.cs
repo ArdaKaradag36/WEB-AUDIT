@@ -137,7 +137,18 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// Local geliştirmede ve bu projede, yalnızca HTTP 5000 portunda dinliyoruz.
+// app.UseHttpsRedirection(); varsayılan olarak HTTPS endpoint bekler ve
+// 5001 portu dinlenmediğinde tarayıcıyı çalışmayan bir adrese yönlendirip
+// frontend tarafında "ağ hatası" (status 0) üretir.
+//
+// Bu yüzden HTTPS'e zorunlu yönlendirmeyi konfigurasyonla kapatıyoruz;
+// gelecekte gerçek HTTPS terminasyonu reverse proxy üzerinden yapılabilir.
+var httpsRedirectEnabled = app.Configuration.GetValue<bool?>("HttpsRedirection:Enabled") ?? false;
+if (httpsRedirectEnabled)
+{
+    app.UseHttpsRedirection();
+}
 
 // Attach standard logging scope and record simple API latency metrics.
 app.Use(async (ctx, next) =>

@@ -25,13 +25,24 @@ export class ApiError extends Error {
   status: number;
   title?: string;
   detail?: string;
+  errorCode?: string;
+  traceId?: string;
 
-  constructor(message: string, status: number, title?: string, detail?: string) {
+  constructor(
+    message: string,
+    status: number,
+    title?: string,
+    detail?: string,
+    errorCode?: string,
+    traceId?: string
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.title = title;
     this.detail = detail;
+    this.errorCode = errorCode;
+    this.traceId = traceId;
   }
 }
 
@@ -41,6 +52,8 @@ type ProblemDetails = {
   status?: number;
   detail?: string;
   errors?: Record<string, string[]>;
+  traceId?: string;
+  errorCode?: string;
 };
 
 async function parseProblemDetails(response: Response): Promise<ProblemDetails | null> {
@@ -73,8 +86,28 @@ export async function apiRequest<T>(
   try {
     response = await authorizedFetch(url, init);
   } catch (error) {
-    captureUnexpectedError(error, { scope: "apiRequest.fetch", extra: { url } });
-    throw new ApiError("Ağ hatası. Lütfen tekrar deneyin.", 0);
+    const isAbortError =
+      typeof error === "object" &&
+      error !== null &&
+      // DOMException.name === "AbortError" tarayıcı tarafında
+      // veya fetch implementasyonlarının kullandığı benzer isimler
+      ( // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (error as any).name === "AbortError" ||
+        (error as any).code === "ABORT_ERR"
+      );
+
+    if (isAbortError) {
+      // Component unmount / effect cleanup gibi senaryolarda beklenen iptaller.
+      // Kullanıcıya toast göstermiyoruz, sadece hatayı yukarı fırlatıyoruz;
+      // çoğu çağıran AbortController üzerinden zaten bu iptali yoksayar.
+      throw error;
+    }
+
+    logError(error, { scope: "apiRequest.fetch", extra: { url } });
+    // Gerçek network hatası: backend'e hiç ulaşamadık veya CORS / bağlantı sorunu.
+    const networkMessage = "Ağ hatası. Lütfen bağlantınızı kontrol edin ve tekrar deneyin.";
+    showToast(networkMessage, "error");
+    throw new ApiError(networkMessage, 0, "Network error");
   }
 
   if (response.ok) {
@@ -108,8 +141,18 @@ export async function apiRequest<T>(
     }
   }
 
-  const apiError = new ApiError(message, problem?.status ?? response.status, problem?.title, problem?.detail);
-  logError(apiError, { scope: "apiRequest.error", extra: { url, status: response.status } });
+  const apiError = new ApiError(
+    message,
+    problem?.status ?? response.status,
+    problem?.title,
+    problem?.detail,
+    problem?.errorCode,
+    problem?.traceId
+  );
+  logError(apiError, {
+    scope: "apiRequest.error",
+    extra: { url, status: response.status, errorCode: problem?.errorCode, traceId: problem?.traceId },
+  });
   showToast(message, "error");
   throw apiError;
 }

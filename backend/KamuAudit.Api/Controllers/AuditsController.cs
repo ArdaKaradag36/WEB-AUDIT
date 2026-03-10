@@ -200,7 +200,6 @@ public sealed class AuditsController : ControllerBase
     }
 
     [HttpGet("{id:guid}/gaps.csv")]
-    [EnableRateLimiting("AuditCreatePolicy")]
     public async Task<IActionResult> GetGapsCsv(Guid id, CancellationToken cancellationToken = default)
     {
         var (userId, isAdmin) = GetCurrentUser();
@@ -214,7 +213,6 @@ public sealed class AuditsController : ControllerBase
     }
 
     [HttpGet("{id:guid}/summary")]
-    [EnableRateLimiting("AuditCreatePolicy")]
     public async Task<ActionResult<AuditSummaryResponse>> GetSummary(Guid id, CancellationToken cancellationToken = default)
     {
         var (userId, isAdmin) = GetCurrentUser();
@@ -225,7 +223,6 @@ public sealed class AuditsController : ControllerBase
     }
 
     [HttpGet("{id:guid}/report")]
-    [EnableRateLimiting("AuditCreatePolicy")]
     public async Task<ActionResult<AuditReportResponse>> GetReport(Guid id, [FromQuery] string? format = "json", CancellationToken cancellationToken = default)
     {
         if (!string.Equals(format, "json", StringComparison.OrdinalIgnoreCase))

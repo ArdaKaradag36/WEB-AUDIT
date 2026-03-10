@@ -1,10 +1,12 @@
 "use client";
 
 import "./globals.css";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { UserMenu } from "../components/UserMenu";
 import { ToastContainer } from "../components/ToastContainer";
+import { storageUsageFromNumbers } from "../lib/mappers/audits";
+import { mockStorageUsage, mockSidebarStats } from "../lib/mock/dashboard";
 
 type NavItem = {
   path: string;
@@ -65,6 +67,29 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Mobil menü açıkken body scroll kilidi + ESC ile kapatma
+  useEffect(() => {
+    if (!mobileMenuOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMobileMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [mobileMenuOpen]);
 
   const isActive = (...prefixes: string[]) =>
     prefixes.some((p) => pathname === p || pathname.startsWith(p));
@@ -213,7 +238,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   router.push(item.path);
                   setMobileMenuOpen(false);
                 }}
-                className={`group flex w-full items-center gap-3 rounded-2xl px-3.5 py-3 text-sm font-medium transition-all ${
+                className={`group flex w-full items-center gap-3 rounded-2xl px-3.5 py-3 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
                   active
                     ? "bg-gradient-to-r from-blue-600/20 to-indigo-600/20 text-white ring-1 ring-inset ring-blue-500/30"
                     : "text-slate-400 hover:bg-white/5 hover:text-white"
@@ -230,34 +255,51 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </div>
 
       <div className="mt-auto p-4">
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                Storage
+        {(() => {
+          const storage = storageUsageFromNumbers(
+            mockStorageUsage.usedGb,
+            mockStorageUsage.totalGb
+          );
+          return (
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    Storage
+                  </div>
+                  <div className="mt-1 text-sm font-semibold text-white">
+                    {storage.usedGb.toFixed(1)} GB / {storage.totalGb} GB
+                  </div>
+                </div>
+                <div className="rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-semibold text-blue-300">
+                  {Math.round(storage.usedPercent)}%
+                </div>
               </div>
-              <div className="mt-1 text-sm font-semibold text-white">64.2 GB / 100 GB</div>
-            </div>
-            <div className="rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-semibold text-blue-300">
-              64%
-            </div>
-          </div>
 
-          <div className="h-2 overflow-hidden rounded-full bg-slate-900">
-            <div className="h-full w-[64%] rounded-full bg-gradient-to-r from-blue-500 to-indigo-500" />
-          </div>
+              <div className="h-2 overflow-hidden rounded-full bg-slate-900">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500"
+                  style={{ width: `${storage.usedPercent}%` }}
+                />
+              </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-3">
-              <div className="text-[11px] text-slate-500">Aktif Audit</div>
-              <div className="mt-1 text-lg font-bold text-white">12</div>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-3">
+                  <div className="text-[11px] text-slate-500">Aktif Audit</div>
+                  <div className="mt-1 text-lg font-bold text-white">
+                    {mockSidebarStats.activeAudits}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-3">
+                  <div className="text-[11px] text-slate-500">Hata Oranı</div>
+                  <div className="mt-1 text-lg font-bold text-white">
+                    %{mockSidebarStats.errorRatePercent}
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-3">
-              <div className="text-[11px] text-slate-500">Hata Oranı</div>
-              <div className="mt-1 text-lg font-bold text-white">%1.8</div>
-            </div>
-          </div>
-        </div>
+          );
+        })()}
       </div>
     </div>
   );
@@ -308,14 +350,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <button
                     type="button"
                     onClick={() => router.push("/")}
-                    className="hidden rounded-xl px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 md:inline-flex"
+                    className="hidden rounded-xl px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white md:inline-flex"
                   >
                     Ana Sayfa
                   </button>
                   <button
                     type="button"
                     onClick={() => router.push("/login")}
-                    className="inline-flex items-center rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-slate-900"
+                    className="inline-flex items-center rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                   >
                     Giriş Yap
                   </button>
@@ -332,14 +374,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </aside>
 
             {mobileMenuOpen && (
-              <div className="fixed inset-0 z-50 lg:hidden">
+              <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true">
                 <button
                   type="button"
                   className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm"
                   onClick={() => setMobileMenuOpen(false)}
                   aria-label="Menüyü kapat"
                 />
-                <div className="absolute inset-y-0 left-0 w-[88%] max-w-xs shadow-2xl">
+                <div
+                  id="mobile-sidebar"
+                  className="absolute inset-y-0 left-0 w-[88%] max-w-xs shadow-2xl"
+                >
                   <SidebarContent />
                 </div>
               </div>
@@ -351,9 +396,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <div className="flex min-w-0 items-center gap-3">
                     <button
                       type="button"
-                      onClick={() => setMobileMenuOpen((prev) => !prev)}
-                      className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 lg:hidden"
+                      onClick={() => setMobileMenuOpen(prev => !prev)}
+                      className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white lg:hidden"
                       aria-label={mobileMenuOpen ? "Menüyü kapat" : "Menüyü aç"}
+                      aria-expanded={mobileMenuOpen}
+                      aria-controls="mobile-sidebar"
                     >
                       {mobileMenuOpen ? <CloseIcon /> : <MenuIcon />}
                     </button>

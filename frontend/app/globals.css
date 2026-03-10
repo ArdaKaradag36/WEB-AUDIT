@@ -44,6 +44,60 @@
   --radius-xl: 1.6rem;
 }
 
+/* Override tokens with refined, higher-contrast values.
+   Bu blok, yukarıdaki ::root tanımından sonra geldiği için tarayıcıda
+   geçerli olan değerler buradakiler olacak. */
+:root {
+  color-scheme: light;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  /* Primary palette */
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --primary-soft: rgba(37, 99, 235, 0.12);
+
+  /* Surface / background */
+  --bg-light: #f8fafc;
+  --bg-soft: #f1f5f9;
+  --bg-card: #ffffff;
+  --bg-dark: #020617;
+  --bg-dark-soft: #0f172a;
+
+  /* Text colors */
+  --text-main: #0f172a;
+  --text-soft: #1f2933;
+  --text-muted: #4b5563;
+  --text-inverse: #e5e7eb;
+
+  /* Borders */
+  --border-subtle: rgba(148, 163, 184, 0.28);
+  --border-strong: rgba(148, 163, 184, 0.45);
+
+  /* Semantic states */
+  --success-bg: #ecfdf5;
+  --success-text: #047857;
+  --success-border: #bbf7d0;
+
+  --warn-bg: #fefce8;
+  --warn-text: #a16207;
+  --warn-border: #fde68a;
+
+  --danger-bg: #fef2f2;
+  --danger-text: #b91c1c;
+  --danger-border: #fecaca;
+
+  /* Shadows */
+  --shadow-sm: 0 8px 20px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 16px 32px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 24px 48px rgba(15, 23, 42, 0.12);
+
+  /* Radius */
+  --radius-sm: 0.6rem;
+  --radius-md: 0.9rem;
+  --radius-lg: 1.2rem;
+  --radius-xl: 1.6rem;
+}
+
 html {
   background-color: var(--bg-light);
   color: var(--text-main);
@@ -103,6 +157,17 @@ select {
 
 button {
   cursor: pointer;
+}
+
+/* Klavye navigasyonu için görünür focus halkası.
+   Tailwind tarafındaki focus-visible:ring-* ile uyumlu çalışır. */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.8);
+  outline-offset: 2px;
 }
 
 img,

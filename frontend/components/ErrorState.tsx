@@ -22,7 +22,7 @@ export function ErrorState({ statusCode, title, description, actions }: ErrorSta
       <h2 id="error-state-heading" className="page-error-title">
         {title}
       </h2>
-      {statusCode != null && (
+      {statusCode != null && statusCode !== 0 && (
         <p className="page-error-status">HTTP durum kodu: {statusCode}</p>
       )}
       {description && <p className="page-error-description">{description}</p>}

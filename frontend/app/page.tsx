@@ -1,6 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { mockLandingHeroStats, mockLandingControlPanel, mockLandingRecentTargets } from "../lib/mock/dashboard";
+
+const cardBase =
+  "rounded-3xl border border-slate-200 bg-white shadow-sm";
 
 function StatCard({
   label,
@@ -12,12 +16,14 @@ function StatCard({
   hint: string;
 }) {
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+    <div className={`${cardBase} p-5`}>
+      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">
         {label}
       </div>
-      <div className="mt-3 text-3xl font-bold tracking-tight text-slate-950">{value}</div>
-      <div className="mt-2 text-sm text-slate-500">{hint}</div>
+      <div className="mt-3 text-3xl font-bold tracking-tight text-slate-950">
+        {value}
+      </div>
+      <div className="mt-2 text-sm text-slate-600">{hint}</div>
     </div>
   );
 }
@@ -36,7 +42,7 @@ function FeatureCard({
   icon: React.ReactNode;
 }) {
   return (
-    <section className="rounded-[28px] border border-slate-200 bg-white p-7 shadow-sm">
+    <section className={`${cardBase} rounded-[28px] p-7`}>
       <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-700 ring-1 ring-inset ring-blue-100">
         {icon}
       </div>
@@ -82,13 +88,15 @@ export default function HomePage() {
               </div>
 
               <h1 className="mt-6 max-w-4xl text-4xl font-black tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
-                Kamu ve kurumsal sistemler için
-                <span className="block bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                <span className="block">
+                  Kamu ve kurumsal sistemler için
+                </span>
+                <span className="mt-1 block bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
                   merkezi web denetim kontrol paneli
                 </span>
               </h1>
 
-              <p className="mt-6 max-w-2xl text-base leading-8 text-slate-600 sm:text-lg">
+              <p className="mt-6 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
                 Erişilebilirlik, güvenlik, kalite ve operasyonel tutarlılık denetimlerini
                 tek merkezden yönet. Audit çalıştır, bulguları izle, raporları karşılaştır
                 ve problemli alanları ekip bazında görünür hale getir.
@@ -98,16 +106,28 @@ export default function HomePage() {
                 <button
                   type="button"
                   onClick={() => router.push("/login")}
-                  className="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-6 py-4 text-base font-semibold text-white shadow-lg shadow-slate-900/10 transition-all hover:-translate-y-0.5 hover:bg-slate-900"
+                  className="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-6 py-4 text-base font-semibold text-white shadow-lg shadow-slate-900/10 transition-all hover:-translate-y-0.5 hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                 >
                   Sisteme Giriş Yap
                 </button>
               </div>
 
               <div className="mt-10 grid gap-4 sm:grid-cols-3">
-                <StatCard label="Denetim Tipleri" value="12+" hint="Erişilebilirlik, kalite, güvenlik ve UI coverage" />
-                <StatCard label="Raporlama" value="JSON + UI" hint="Detaylı çıktı, geçmiş kıyaslama ve izlenebilirlik" />
-                <StatCard label="Çalışma Modeli" value="Multi-user" hint="Kurumsal kullanım için merkezi yönetim akışı" />
+                <StatCard
+                  label="Denetim Tipleri"
+                  value={mockLandingHeroStats.auditTypesLabel}
+                  hint="Erişilebilirlik, kalite, güvenlik ve UI coverage"
+                />
+                <StatCard
+                  label="Raporlama"
+                  value={mockLandingHeroStats.reportingLabel}
+                  hint="Detaylı çıktı, geçmiş kıyaslama ve izlenebilirlik"
+                />
+                <StatCard
+                  label="Çalışma Modeli"
+                  value={mockLandingHeroStats.modelLabel}
+                  hint="Kurumsal kullanım için merkezi yönetim akışı"
+                />
               </div>
             </div>
 
@@ -129,13 +149,17 @@ export default function HomePage() {
                   <div className="mt-5 grid gap-4 sm:grid-cols-2">
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                       <div className="text-xs text-slate-400">Aktif Audit</div>
-                      <div className="mt-2 text-3xl font-bold">18</div>
+                      <div className="mt-2 text-3xl font-bold">
+                        {mockLandingControlPanel.activeAudits}
+                      </div>
                       <div className="mt-2 text-xs text-emerald-300">+4 son 24 saat</div>
                     </div>
 
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                       <div className="text-xs text-slate-400">Kritik Bulgu</div>
-                      <div className="mt-2 text-3xl font-bold">27</div>
+                      <div className="mt-2 text-3xl font-bold">
+                        {mockLandingControlPanel.criticalFindings}
+                      </div>
                       <div className="mt-2 text-xs text-amber-300">Önceliklendirme gerekli</div>
                     </div>
                   </div>
@@ -155,23 +179,7 @@ export default function HomePage() {
                   </div>
 
                   <div className="mt-4 space-y-3">
-                    {[
-                      {
-                        title: "nvi.gov.tr",
-                        status: "Running",
-                        tone: "text-blue-300",
-                      },
-                      {
-                        title: "kurum-portal.local",
-                        status: "Queued",
-                        tone: "text-amber-300",
-                      },
-                      {
-                        title: "internal-docs.gov",
-                        status: "Completed",
-                        tone: "text-emerald-300",
-                      },
-                    ].map((row) => (
+                    {mockLandingRecentTargets.map((row) => (
                       <div
                         key={row.title}
                         className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
@@ -180,7 +188,7 @@ export default function HomePage() {
                           <div className="text-sm font-medium text-white">{row.title}</div>
                           <div className="text-xs text-slate-400">Son audit akışı sistemde kayıtlı</div>
                         </div>
-                        <div className={`text-xs font-bold uppercase tracking-[0.16em] ${row.tone}`}>
+                        <div className={`text-xs font-bold uppercase tracking-[0.16em] ${row.toneClass}`}>
                           {row.status}
                         </div>
                       </div>

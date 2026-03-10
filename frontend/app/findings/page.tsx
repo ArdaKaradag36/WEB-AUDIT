@@ -52,6 +52,7 @@ const SKIP_REASONS = [
 function FindingsExplorerInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+
   const [audits, setAudits] = useState<AuditSummaryRow[]>([]);
   const [selectedAuditId, setSelectedAuditId] = useState<string | null>(null);
   const [severityFilter, setSeverityFilter] = useState<string | null>(null);
@@ -66,7 +67,6 @@ function FindingsExplorerInner() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<{ statusCode?: number; message: string } | null>(null);
 
-  // Initialize filters from URL query params on first render.
   useEffect(() => {
     const sev = searchParams.get("severity");
     const cat = searchParams.get("category");
@@ -88,10 +88,12 @@ function FindingsExplorerInner() {
 
   useEffect(() => {
     let cancelled = false;
+
     (async () => {
       try {
         const data = await apiRequest<AuditSummaryRow[]>(`${apiBaseUrl}/api/Audits`);
         if (cancelled) return;
+
         setAudits(data);
         const latest = data[0];
         if (latest) {
@@ -99,6 +101,7 @@ function FindingsExplorerInner() {
         }
       } catch (err: any) {
         if (cancelled) return;
+
         if (err instanceof ApiError) {
           const message =
             err.status === 401
@@ -110,29 +113,35 @@ function FindingsExplorerInner() {
               : err.status >= 500
               ? "Sunucu hatası. Tekrar dene."
               : err.message || "Denetim listesi yüklenirken bir hata oluştu.";
+
           setError({ statusCode: err.status, message });
         } else {
           setError({ message: "Bağlantı sorunu." });
         }
+
         logError(err, { scope: "FindingsExplorer.loadAudits" });
       }
     })();
+
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // Sync filters to URL and load findings for selected audit.
   useEffect(() => {
     if (!selectedAuditId) return;
+
     let cancelled = false;
+
     (async () => {
       setLoading(true);
       setError(null);
+
       try {
         const url = new URL(`${apiBaseUrl}/api/Audits/${selectedAuditId}/findings`);
         url.searchParams.set("page", "1");
         url.searchParams.set("pageSize", "200");
+
         if (severityFilter) url.searchParams.append("severity", severityFilter);
         if (categoryFilter) url.searchParams.append("category", categoryFilter);
         statusFilters.forEach((s) => url.searchParams.append("status", s));
@@ -142,7 +151,6 @@ function FindingsExplorerInner() {
           url.searchParams.append("skipReason", skipReasonFilter);
         }
 
-        // Sync query string to browser URL (shareable filters).
         const uiParams = new URLSearchParams();
         if (severityFilter) uiParams.set("severity", severityFilter);
         if (categoryFilter) uiParams.set("category", categoryFilter);
@@ -152,20 +160,18 @@ function FindingsExplorerInner() {
         if (skipReasonFilter && statusFilters.includes("SKIPPED")) {
           uiParams.set("skipReason", skipReasonFilter);
         }
-        const queryForUi = uiParams.toString();
-        router.replace(
-          queryForUi ? `?${queryForUi}` : "?",
-          { scroll: false },
-        );
 
-        const resp = await apiRequest<PagedFindingsResponse>(
-          url.toString(),
-        );
+        const queryForUi = uiParams.toString();
+        router.replace(queryForUi ? `?${queryForUi}` : "?", { scroll: false });
+
+        const resp = await apiRequest<PagedFindingsResponse>(url.toString());
         if (cancelled) return;
+
         setFindings(resp.items ?? []);
         setGroups(resp.groups ?? []);
       } catch (err: any) {
         if (cancelled) return;
+
         if (err instanceof ApiError) {
           const message =
             err.status === 401
@@ -177,15 +183,21 @@ function FindingsExplorerInner() {
               : err.status >= 500
               ? "Sunucu hatası. Tekrar dene."
               : err.message || "Bulgular yüklenirken bir hata oluştu.";
+
           setError({ statusCode: err.status, message });
         } else {
           setError({ message: "Bağlantı sorunu." });
         }
-        logError(err, { scope: "FindingsExplorer.loadFindings", extra: { selectedAuditId } });
+
+        logError(err, {
+          scope: "FindingsExplorer.loadFindings",
+          extra: { selectedAuditId },
+        });
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
+
     return () => {
       cancelled = true;
     };
@@ -202,6 +214,7 @@ function FindingsExplorerInner() {
 
   const filteredFindings = useMemo(() => {
     if (!titleSearch.trim()) return findings;
+
     const q = titleSearch.toLowerCase();
     return findings.filter((f) => {
       const text = `${f.title} ${f.detail ?? ""}`.toLowerCase();
@@ -233,7 +246,18 @@ function FindingsExplorerInner() {
     return `${a.targetUrl} (${a.status}${date ? ` – ${new Date(date).toLocaleString("tr-TR")}` : ""})`;
   }
 
-  if (loading && !selectedAuditId) {
+  const resetFilters = () => {
+    setSeverityFilter(null);
+    setCategoryFilter(null);
+    setTitleSearch("");
+    setUrlContains("");
+    setStatusFilters([]);
+    setSkipReasonFilter(null);
+    setMinConfidence(null);
+    router.replace("?", { scroll: false });
+  };
+
+  if (!selectedAuditId && loading) {
     return (
       <ProtectedRoute>
         <LoadingState variant="page" message="Bulgular yükleniyor..." />
@@ -241,7 +265,7 @@ function FindingsExplorerInner() {
     );
   }
 
-  if (error) {
+  if (error && !selectedAuditId) {
     return (
       <ProtectedRoute>
         <ErrorState
@@ -264,12 +288,22 @@ function FindingsExplorerInner() {
     <ProtectedRoute>
       <div className="findings-page">
         <section className="card findings-filters-card">
-          <div className="card-header">
-            <h2>Findings Explorer</h2>
-            <p>Seçilen denetim için bulguları filtrele ve gruplanmış görünümü incele.</p>
+          <div className="card-header card-header-with-meta">
+            <div>
+              <span className="section-eyebrow">İnceleme Paneli</span>
+              <h2>Findings Explorer</h2>
+              <p>Seçilen denetimdeki bulguları filtrele, grupla ve teknik görünümü sade biçimde incele.</p>
+            </div>
+
+            <div className="findings-stats-chip">
+              <span>{groups.length} grup</span>
+              <span className="findings-stats-separator" />
+              <span>{filteredFindings.length} bulgu</span>
+            </div>
           </div>
-          <div className="card-body findings-filters-grid">
-            <label className="settings-field">
+
+          <div className="card-body findings-filters-grid findings-filters-grid-updated">
+            <label className="settings-field findings-field findings-field-wide">
               <span className="settings-field-label">Denetim</span>
               <select
                 value={selectedAuditId ?? ""}
@@ -285,39 +319,11 @@ function FindingsExplorerInner() {
               </select>
             </label>
 
-            <fieldset className="settings-field">
-              <legend className="settings-field-label">Severity</legend>
-              <div className="settings-toggle-group">
-                <label className="settings-toggle-row">
-                  <span>Tümü</span>
-                  <input
-                    type="radio"
-                    name="severityFilter"
-                    checked={severityFilter === null}
-                    onChange={() => setSeverityFilter(null)}
-                  />
-                </label>
-                {SEVERITIES.map((s) => (
-                  <label key={s} className="settings-toggle-row">
-                    <span>{s}</span>
-                    <input
-                      type="radio"
-                      name="severityFilter"
-                      checked={severityFilter === s}
-                      onChange={() => setSeverityFilter(s)}
-                    />
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-
-            <label className="settings-field">
+            <label className="settings-field findings-field">
               <span className="settings-field-label">Kategori</span>
               <select
                 value={categoryFilter ?? ""}
-                onChange={(e) =>
-                  setCategoryFilter(e.target.value ? e.target.value : null)
-                }
+                onChange={(e) => setCategoryFilter(e.target.value ? e.target.value : null)}
                 aria-label="Kategori filtresi"
               >
                 <option value="">Tümü</option>
@@ -330,17 +336,7 @@ function FindingsExplorerInner() {
               </select>
             </label>
 
-            <label className="settings-field">
-              <span className="settings-field-label">Başlık / Detay Arama</span>
-              <input
-                type="text"
-                value={titleSearch}
-                onChange={(e) => setTitleSearch(e.target.value)}
-                placeholder="Örn. HSTS, CSRF, CSP..."
-              />
-            </label>
-
-            <label className="settings-field">
+            <label className="settings-field findings-field">
               <span className="settings-field-label">URL contains</span>
               <input
                 type="text"
@@ -350,51 +346,17 @@ function FindingsExplorerInner() {
               />
             </label>
 
-            <fieldset className="settings-field">
-              <legend className="settings-field-label">Status</legend>
-              <div className="settings-toggle-group">
-                {STATUSES.map((s) => (
-                  <label key={s} className="settings-toggle-row">
-                    <span>{s}</span>
-                    <input
-                      type="checkbox"
-                      checked={statusFilters.includes(s)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setStatusFilters((prev) =>
-                            prev.includes(s) ? prev : [...prev, s],
-                          );
-                        } else {
-                          setStatusFilters((prev) => prev.filter((x) => x !== s));
-                        }
-                      }}
-                    />
-                  </label>
-                ))}
-              </div>
-            </fieldset>
+            <label className="settings-field findings-field">
+              <span className="settings-field-label">Başlık / Detay Arama</span>
+              <input
+                type="text"
+                value={titleSearch}
+                onChange={(e) => setTitleSearch(e.target.value)}
+                placeholder="Örn. HSTS, CSRF, CSP..."
+              />
+            </label>
 
-            {statusFilters.includes("SKIPPED") && (
-              <label className="settings-field">
-                <span className="settings-field-label">Skip reason</span>
-                <select
-                  value={skipReasonFilter ?? ""}
-                  onChange={(e) =>
-                    setSkipReasonFilter(e.target.value || null)
-                  }
-                  aria-label="Skip reason filtresi"
-                >
-                  <option value="">Tümü</option>
-                  {SKIP_REASONS.map((r) => (
-                    <option key={r} value={r}>
-                      {mapSkipReason(r)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-
-            <label className="settings-field">
+            <label className="settings-field findings-field">
               <span className="settings-field-label">Min confidence</span>
               <select
                 value={minConfidence == null ? "" : String(minConfidence)}
@@ -413,39 +375,103 @@ function FindingsExplorerInner() {
               </select>
             </label>
 
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => {
-                setSeverityFilter(null);
-                setCategoryFilter(null);
-                setTitleSearch("");
-                setUrlContains("");
-                setStatusFilters([]);
-                setSkipReasonFilter(null);
-                setMinConfidence(null);
-                router.replace("?", { scroll: false });
-              }}
-            >
-              Filtreleri temizle
-            </button>
+            <fieldset className="settings-field filter-panel">
+              <legend className="settings-field-label">Severity</legend>
+              <div className="compact-option-grid">
+                <label className="compact-option-row">
+                  <span>Tümü</span>
+                  <input
+                    type="radio"
+                    name="severityFilter"
+                    checked={severityFilter === null}
+                    onChange={() => setSeverityFilter(null)}
+                  />
+                </label>
+                {SEVERITIES.map((s) => (
+                  <label key={s} className="compact-option-row">
+                    <span>{s}</span>
+                    <input
+                      type="radio"
+                      name="severityFilter"
+                      checked={severityFilter === s}
+                      onChange={() => setSeverityFilter(s)}
+                    />
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            <fieldset className="settings-field filter-panel">
+              <legend className="settings-field-label">Status</legend>
+              <div className="compact-option-grid">
+                {STATUSES.map((s) => (
+                  <label key={s} className="compact-option-row">
+                    <span>{s}</span>
+                    <input
+                      type="checkbox"
+                      checked={statusFilters.includes(s)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setStatusFilters((prev) => (prev.includes(s) ? prev : [...prev, s]));
+                        } else {
+                          setStatusFilters((prev) => prev.filter((x) => x !== s));
+                        }
+                      }}
+                    />
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            {statusFilters.includes("SKIPPED") && (
+              <label className="settings-field findings-field">
+                <span className="settings-field-label">Skip reason</span>
+                <select
+                  value={skipReasonFilter ?? ""}
+                  onChange={(e) => setSkipReasonFilter(e.target.value || null)}
+                  aria-label="Skip reason filtresi"
+                >
+                  <option value="">Tümü</option>
+                  {SKIP_REASONS.map((r) => (
+                    <option key={r} value={r}>
+                      {mapSkipReason(r)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            <div className="findings-filter-actions">
+              <button type="button" className="secondary-button" onClick={resetFilters}>
+                Filtreleri temizle
+              </button>
+            </div>
           </div>
         </section>
 
         {loading ? (
-          <div className="page-loading" role="status" aria-live="polite">
+          <div className="page-loading findings-loading" role="status" aria-live="polite">
             Bulgular yükleniyor...
           </div>
         ) : error ? (
-          <div className="page-error" role="alert">
-            {error}
-          </div>
+          <ErrorState
+            statusCode={error.statusCode}
+            title="Bulgular yüklenemedi"
+            description={error.message}
+            actions={[
+              {
+                label: "Tekrar dene",
+                onClick: () => router.refresh(),
+                variant: "primary",
+              },
+            ]}
+          />
         ) : (
-          <div className="findings-grid">
+          <div className="findings-grid findings-grid-updated">
             <section className="card">
               <div className="card-header">
-                <h3>Gruplanmış Bulgular (Bu tipten X adet)</h3>
-                <p>RuleId + başlık bazında dedupe edilmiş bulgular.</p>
+                <h3>Gruplanmış Bulgular</h3>
+                <p>RuleId ve başlık bazında tekilleştirilmiş özet görünüm.</p>
               </div>
               <div className="card-table-wrapper">
                 <table className="card-table">
@@ -473,16 +499,7 @@ function FindingsExplorerInner() {
                             title="Filtrelere uyan grup bulunamadı"
                             description="Filtreleri gevşeterek veya farklı bir denetim seçerek tekrar deneyebilirsin."
                             actionLabel="Filtreleri temizle"
-                            onAction={() => {
-                              setSeverityFilter(null);
-                              setCategoryFilter(null);
-                              setTitleSearch("");
-                              setUrlContains("");
-                              setStatusFilters([]);
-                              setSkipReasonFilter(null);
-                              setMinConfidence(null);
-                              router.replace("?", { scroll: false });
-                            }}
+                            onAction={resetFilters}
                           />
                         </td>
                       </tr>
@@ -495,7 +512,7 @@ function FindingsExplorerInner() {
             <section className="card">
               <div className="card-header">
                 <h3>Bulgu Listesi</h3>
-                <p>Seçilen denetimdeki bireysel bulgular.</p>
+                <p>Seçilen denetimdeki bireysel kayıtlar ve kısa açıklamaları.</p>
               </div>
               <div className="card-table-wrapper">
                 <table className="card-table">
@@ -512,30 +529,29 @@ function FindingsExplorerInner() {
                     {filteredFindings.map((f) => {
                       const isSkipped = f.status === "SKIPPED";
                       const reasonLabel = mapSkipReason(f.skipReason as string | undefined);
+
                       return (
                         <tr key={f.id}>
                           <td>{f.severity}</td>
                           <td>{f.ruleId}</td>
                           <td>{f.category}</td>
                           <td>
-                            {f.title}
-                            {isSkipped && (
-                              <span
-                                className="badge-skip"
-                                aria-label={
-                                  reasonLabel
-                                    ? `SKIPPED: ${reasonLabel}`
-                                    : "SKIPPED bulgu"
-                                }
-                              >
-                                SKIPPED{reasonLabel ? ` (${reasonLabel})` : ""}
-                              </span>
-                            )}
+                            <div className="finding-title-cell">
+                              <span>{f.title}</span>
+                              {isSkipped && (
+                                <span
+                                  className="badge-skip"
+                                  aria-label={reasonLabel ? `SKIPPED: ${reasonLabel}` : "SKIPPED bulgu"}
+                                >
+                                  SKIPPED{reasonLabel ? ` (${reasonLabel})` : ""}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td title={f.detail}>
                             {f.detail
-                              ? f.detail.length > 80
-                                ? `${f.detail.slice(0, 77)}...`
+                              ? f.detail.length > 100
+                                ? `${f.detail.slice(0, 97)}...`
                                 : f.detail
                               : "-"}
                           </td>
@@ -547,18 +563,9 @@ function FindingsExplorerInner() {
                         <td colSpan={5}>
                           <EmptyState
                             title="Filtrelere uyan bulgu bulunamadı"
-                            description="Farklı bir URL, severity veya status kombinasyonu deneyebilirsin."
+                            description="Farklı URL, severity veya status kombinasyonları deneyebilirsin."
                             actionLabel="Filtreleri temizle"
-                            onAction={() => {
-                              setSeverityFilter(null);
-                              setCategoryFilter(null);
-                              setTitleSearch("");
-                              setUrlContains("");
-                              setStatusFilters([]);
-                              setSkipReasonFilter(null);
-                              setMinConfidence(null);
-                              router.replace("?", { scroll: false });
-                            }}
+                            onAction={resetFilters}
                           />
                         </td>
                       </tr>
@@ -577,4 +584,3 @@ function FindingsExplorerInner() {
 export default function FindingsExplorerPage() {
   return <FindingsExplorerInner />;
 }
-

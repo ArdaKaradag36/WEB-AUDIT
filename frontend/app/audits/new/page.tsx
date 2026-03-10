@@ -5,9 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { apiBaseUrl, apiRequest, ApiError } from "../../../lib/api";
 import { logError } from "../../../utils/errorHandler";
 import { ProtectedRoute } from "../../../components/ProtectedRoute";
-import { AuditListTable, AuditSummaryRow } from "../../../components/AuditListTable";
+import { AuditListTable } from "../../../components/AuditListTable";
 import { ErrorState } from "../../../components/ErrorState";
 import { LoadingState } from "../../../components/LoadingState";
+import type { AuditSummaryRow } from "../../../lib/types/audits";
 
 function NewAuditPageInner() {
   const router = useRouter();
@@ -181,11 +182,15 @@ function NewAuditPageInner() {
               <p>Son oluşturduğun denetimlerin özeti.</p>
             </div>
           </div>
-          <AuditListTable
-            audits={audits}
-            onSelect={id => router.push(`/audits/${id}`)}
-            showActions={false}
-          />
+          {audits.length === 0 ? (
+            <LoadingState variant="table" />
+          ) : (
+            <AuditListTable
+              audits={audits}
+              onSelect={id => router.push(`/audits/${id}`)}
+              showActions={false}
+            />
+          )}
         </section>
       </div>
     </div>

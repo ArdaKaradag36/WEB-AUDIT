@@ -415,9 +415,6 @@
   .w-80 {
     width: calc(var(--spacing) * 80);
   }
-  .w-\[64\%\] {
-    width: 64%;
-  }
   .w-\[84\%\] {
     width: 84%;
   }
@@ -562,9 +559,6 @@
     @supports (color: color-mix(in lab, red, red)) {
       border-color: color-mix(in oklab, var(--color-slate-200) 80%, transparent);
     }
-  }
-  .border-slate-300 {
-    border-color: var(--color-slate-300);
   }
   .border-white\/10 {
     border-color: color-mix(in srgb, #fff 10%, transparent);
@@ -829,10 +823,6 @@
   .leading-7 {
     --tw-leading: calc(var(--spacing) * 7);
     line-height: calc(var(--spacing) * 7);
-  }
-  .leading-8 {
-    --tw-leading: calc(var(--spacing) * 8);
-    line-height: calc(var(--spacing) * 8);
   }
   .font-black {
     --tw-font-weight: var(--font-weight-black);
@@ -1100,6 +1090,39 @@
       }
     }
   }
+  .focus-visible\:ring-2 {
+    &:focus-visible {
+      --tw-ring-shadow: var(--tw-ring-inset,) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);
+      box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+    }
+  }
+  .focus-visible\:ring-blue-500 {
+    &:focus-visible {
+      --tw-ring-color: var(--color-blue-500);
+    }
+  }
+  .focus-visible\:ring-offset-2 {
+    &:focus-visible {
+      --tw-ring-offset-width: 2px;
+      --tw-ring-offset-shadow: var(--tw-ring-inset,) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
+    }
+  }
+  .focus-visible\:ring-offset-slate-950 {
+    &:focus-visible {
+      --tw-ring-offset-color: var(--color-slate-950);
+    }
+  }
+  .focus-visible\:ring-offset-white {
+    &:focus-visible {
+      --tw-ring-offset-color: var(--color-white);
+    }
+  }
+  .focus-visible\:outline-none {
+    &:focus-visible {
+      --tw-outline-style: none;
+      outline-style: none;
+    }
+  }
   .sm\:block {
     @media (width >= 40rem) {
       display: block;
@@ -1140,6 +1163,12 @@
     @media (width >= 40rem) {
       font-size: var(--text-lg);
       line-height: var(--tw-leading, var(--text-lg--line-height));
+    }
+  }
+  .sm\:leading-8 {
+    @media (width >= 40rem) {
+      --tw-leading: calc(var(--spacing) * 8);
+      line-height: calc(var(--spacing) * 8);
     }
   }
   .md\:block {
@@ -1263,6 +1292,40 @@
   --radius-lg: 1.2rem;
   --radius-xl: 1.6rem;
 }
+:root {
+  color-scheme: light;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --primary-soft: rgba(37, 99, 235, 0.12);
+  --bg-light: #f8fafc;
+  --bg-soft: #f1f5f9;
+  --bg-card: #ffffff;
+  --bg-dark: #020617;
+  --bg-dark-soft: #0f172a;
+  --text-main: #0f172a;
+  --text-soft: #1f2933;
+  --text-muted: #4b5563;
+  --text-inverse: #e5e7eb;
+  --border-subtle: rgba(148, 163, 184, 0.28);
+  --border-strong: rgba(148, 163, 184, 0.45);
+  --success-bg: #ecfdf5;
+  --success-text: #047857;
+  --success-border: #bbf7d0;
+  --warn-bg: #fefce8;
+  --warn-text: #a16207;
+  --warn-border: #fde68a;
+  --danger-bg: #fef2f2;
+  --danger-text: #b91c1c;
+  --danger-border: #fecaca;
+  --shadow-sm: 0 8px 20px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 16px 32px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 24px 48px rgba(15, 23, 42, 0.12);
+  --radius-sm: 0.6rem;
+  --radius-md: 0.9rem;
+  --radius-lg: 1.2rem;
+  --radius-xl: 1.6rem;
+}
 html {
   background-color: var(--bg-light);
   color: var(--text-main);
@@ -1313,6 +1376,14 @@ select {
 }
 button {
   cursor: pointer;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.8);
+  outline-offset: 2px;
 }
 img,
 svg,
