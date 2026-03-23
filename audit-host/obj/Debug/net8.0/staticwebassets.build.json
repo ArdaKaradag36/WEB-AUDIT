@@ -1,0 +1,39 @@
+{
+  "Version": 1,
+  "Hash": "i/t2QA1Wrap+gyqfti5oCKtzzN/rmT1ZLsetV+8mPCw=",
+  "Source": "AuditHost",
+  "BasePath": "_content/AuditHost",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [
+    {
+      "Name": "AuditHost/wwwroot",
+      "Source": "AuditHost",
+      "ContentRoot": "/home/arda/software/WEB-AUDIT/audit-host/wwwroot/",
+      "BasePath": "_content/AuditHost",
+      "Pattern": "**"
+    }
+  ],
+  "Assets": [
+    {
+      "Identity": "/home/arda/software/WEB-AUDIT/audit-host/wwwroot/index.html",
+      "SourceId": "AuditHost",
+      "SourceType": "Discovered",
+      "ContentRoot": "/home/arda/software/WEB-AUDIT/audit-host/wwwroot/",
+      "BasePath": "_content/AuditHost",
+      "RelativePath": "index.html",
+      "AssetKind": "All",
+      "AssetMode": "All",
+      "AssetRole": "Primary",
+      "AssetMergeBehavior": "PreferTarget",
+      "AssetMergeSource": "",
+      "RelatedAsset": "",
+      "AssetTraitName": "",
+      "AssetTraitValue": "",
+      "CopyToOutputDirectory": "Never",
+      "CopyToPublishDirectory": "PreserveNewest",
+      "OriginalItemSpec": "wwwroot/index.html"
+    }
+  ]
+}

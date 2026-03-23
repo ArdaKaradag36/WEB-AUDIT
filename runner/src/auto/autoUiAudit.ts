@@ -27,13 +27,13 @@ export type AutoUiAuditConfig = {
 const DEFAULT_CONFIG: AutoUiAuditConfig = {
   safeMode: true,
   clickAllowlist: [],
-  maxAttemptsTotal: 150,
+  maxAttemptsTotal: 220,
   actionTimeout: 8_000,
   waitStrategy: "domcontentloaded",
   networkIdleTimeout: 2_000,
-  scrollSteps: 6,
+  scrollSteps: 10,
   scrollStabilizationMs: 400,
-  maxAttemptsPerScrollStep: 30,
+  maxAttemptsPerScrollStep: 45,
   retryNotVisible: false,
 };
 
@@ -152,7 +152,7 @@ export async function runAutoUiAudit(args: {
   if (args.config?.maxAttempts != null) (config as any).maxAttemptsTotal = args.config.maxAttempts;
   let attemptsUsed = 0;
   const attemptedKeys = new Set<string>();
-  const steps = Math.max(0, Math.min(config.scrollSteps, 6));
+  const steps = Math.max(0, Math.min(config.scrollSteps, 12));
   const newlyDiscoveredPerScrollStep: number[] = Array(steps).fill(0);
   const collisionCountPerStep: number[] = Array(steps).fill(0);
   let collisionCountTotal = 0;

@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Web Audit Local UI</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; background: #0f172a; color: #e2e8f0; }
+    h1, h2 { margin: 0 0 12px; }
+    .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 14px; }
+    input, select, button { width: 100%; margin: 6px 0; padding: 8px; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #e2e8f0; }
+    button { cursor: pointer; background: #2563eb; border: none; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    pre { overflow: auto; max-height: 280px; background: #020617; padding: 8px; border-radius: 6px; }
+    a { color: #93c5fd; }
+    table { width: 100%; border-collapse: collapse; }
+    td, th { border-bottom: 1px solid #334155; padding: 8px; text-align: left; vertical-align: top; }
+    .badge { display: inline-block; border-radius: 999px; padding: 2px 8px; font-size: 12px; }
+    .running { background: #0369a1; }
+    .success { background: #166534; }
+    .error, .notrun { background: #991b1b; }
+    .queued { background: #92400e; }
+    .stats { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); margin-top: 8px; }
+    .stat { background: #0b1220; border: 1px solid #334155; border-radius: 8px; padding: 8px; }
+    .stat .k { font-size: 12px; color: #94a3b8; }
+    .stat .v { font-size: 18px; font-weight: 700; margin-top: 4px; }
+    .progressWrap { width: 100%; height: 12px; background: #0b1220; border: 1px solid #334155; border-radius: 999px; overflow: hidden; margin-top: 10px; }
+    .progressBar { height: 100%; background: linear-gradient(90deg, #ef4444, #f59e0b, #22c55e); width: 0%; transition: width 0.4s ease; }
+    .muted { color: #94a3b8; font-size: 12px; }
+    .toTop {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      border-radius: 50%;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.35);
+      display: none;
+      z-index: 1000;
+      font-size: 24px;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .toTop.show { display: inline-block; }
+
+    .filterBar { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:center; }
+    .filterSearch {
+      width: 340px;
+      margin: 0 !important;
+      border: 1px solid #334155 !important;
+      background: linear-gradient(180deg, #0b1220, #0a1020) !important;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+    }
+    .filterBtn {
+      width: auto !important;
+      margin: 0 !important;
+      padding: 9px 14px !important;
+      background: linear-gradient(180deg, #131c2f, #0c1425) !important;
+      border: 1px solid #334155 !important;
+      border-radius: 999px !important;
+      color: #e2e8f0 !important;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+      box-shadow: 0 4px 14px rgba(2, 6, 23, 0.35), inset 0 1px 0 rgba(255,255,255,0.05);
+      transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+    .filterBtn:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(2, 6, 23, 0.45), inset 0 1px 0 rgba(255,255,255,0.06); }
+    .filterBtn.active {
+      transform: translateY(-1px);
+    }
+    .filterBtn.success { border-color: #166534 !important; color: #86efac !important; }
+    .filterBtn.success.active {
+      background: linear-gradient(180deg, #22c55e, #15803d) !important;
+      border-color: #22c55e !important;
+      color: #052e16 !important;
+      box-shadow: 0 10px 22px rgba(21, 128, 61, 0.35);
+    }
+    .filterBtn.running { border-color: #ca8a04 !important; color: #fde68a !important; }
+    .filterBtn.running.active {
+      background: linear-gradient(180deg, #facc15, #ca8a04) !important;
+      border-color: #facc15 !important;
+      color: #3f2a08 !important;
+      box-shadow: 0 10px 22px rgba(202, 138, 4, 0.35);
+    }
+    .filterBtn.error { border-color: #b91c1c !important; color: #fecaca !important; }
+    .filterBtn.error.active {
+      background: linear-gradient(180deg, #ef4444, #b91c1c) !important;
+      border-color: #ef4444 !important;
+      color: #450a0a !important;
+      box-shadow: 0 10px 22px rgba(185, 28, 28, 0.35);
+    }
+  </style>
+</head>
+<body>
+  <h1>Web Audit (Local)</h1>
+  <div class="grid">
+    <section class="card">
+      <h2>Denetim Oluştur</h2>
+      <label>Hedef URL</label>
+      <input id="targetUrl" value="https://cursor.com/download" />
+      <label>Giriş Türü</label>
+      <select id="loginMode">
+        <option value="none">Yok</option>
+        <option value="email">E-posta</option>
+        <option value="username">Kullanıcı adı</option>
+        <option value="phone">Telefon</option>
+      </select>
+      <label>Identifier (opsiyonel)</label>
+      <input id="identifier" placeholder="eposta / username / telefon" />
+      <label>Password (opsiyonel)</label>
+      <input id="password" type="password" />
+      <div class="row">
+        <div>
+          <label>maxLinks</label>
+          <input id="maxLinks" type="number" value="35" />
+        </div>
+        <div>
+          <label>maxUiAttempts</label>
+          <input id="maxUiAttempts" type="number" value="220" />
+        </div>
+      </div>
+      <button id="startBtn">Denetimi Başlat</button>
+      <div id="createResult"></div>
+    </section>
+
+    <section class="card">
+      <h2>Canlı Durum</h2>
+      <div id="currentStatus">Yükleniyor...</div>
+      <div class="progressWrap"><div id="auditProgress" class="progressBar"></div></div>
+      <div id="progressText" class="muted" style="margin-top:6px;">Hesaplaniyor...</div>
+      <div class="stats">
+        <div class="stat"><div class="k">Basari Skoru</div><div class="v" id="scoreStat">%0</div></div>
+        <div class="stat"><div class="k">Denetim Saati</div><div class="v" id="startedStat">-</div></div>
+        <div class="stat"><div class="k">Sure</div><div class="v" id="durationStat">-</div></div>
+        <div class="stat"><div class="k">Sayfa / Istek</div><div class="v" id="trafficStat">0 / 0</div></div>
+      </div>
+    </section>
+  </div>
+
+  <section class="card" style="margin-top:16px;">
+    <h2>Genel Sonuç (Current)</h2>
+    <pre id="currentSummary">Yükleniyor...</pre>
+  </section>
+
+  <section class="card" style="margin-top:16px;">
+    <h2>Son 5 Denetim</h2>
+    <table>
+      <thead><tr><th>ID</th><th>URL</th><th>Durum</th><th>Metrikler</th><th>JSON</th></tr></thead>
+      <tbody id="recentRows"></tbody>
+    </table>
+  </section>
+
+  <section class="card" style="margin-top:16px;">
+    <h2>Tüm Denetimler</h2>
+    <div class="filterBar" style="margin-bottom:10px;">
+      <input id="urlSearch" class="filterSearch" placeholder="URL veya ID ile ara..." />
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <button class="filterBtn success" type="button" data-filter="success">Basarili</button>
+        <button class="filterBtn running" type="button" data-filter="running">DevamEden</button>
+        <button class="filterBtn error" type="button" data-filter="error">Basarisiz</button>
+      </div>
+    </div>
+    <div class="muted" style="margin-bottom:8px;" id="allCountLabel">Tum denetimler</div>
+    <table>
+      <thead><tr><th>ID</th><th>URL</th><th>Durum</th><th>Metrikler</th><th>JSON</th></tr></thead>
+      <tbody id="allRows"></tbody>
+    </table>
+  </section>
+
+  <button id="toTopBtn" class="toTop" type="button" aria-label="Yukari cik" title="Yukari cik">↑</button>
+
+  <script>
+    async function getJson(url) {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(await r.text());
+      return r.json();
+    }
+
+    function statusBadge(status) {
+      return `<span class="badge ${status}">${status}</span>`;
+    }
+
+    function formatTs(unixSec) {
+      if (!unixSec) return '-';
+      return new Date(unixSec * 1000).toLocaleString('tr-TR');
+    }
+
+    function formatDuration(startedAt, finishedAt) {
+      if (!startedAt) return '-';
+      const end = finishedAt || Math.floor(Date.now() / 1000);
+      const sec = Math.max(0, end - startedAt);
+      if (sec < 60) return `${sec}s`;
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      return `${m}dk ${s}s`;
+    }
+
+    function parseFindings(findingsRaw) {
+      if (!findingsRaw) return {};
+      if (typeof findingsRaw === 'object') return findingsRaw;
+      try {
+        return JSON.parse(findingsRaw);
+      } catch {
+        return {};
+      }
+    }
+
+    const SUCCESS_RATIO_THRESHOLD = 0.5;
+
+    function coverageRatioFromCache(cache) {
+      const total = Number(cache?.totalElements || 0);
+      const tested = Number(cache?.testedElements || 0);
+      if (!total) return null;
+      return tested / total;
+    }
+
+    function derivedStatus(job, cache) {
+      // Running/queued: devam ediyor.
+      if (job.status === 'running' || job.status === 'queued') return 'running';
+      // Runner hata verdi / calisamadi: basarisiz.
+      if (job.status === 'error' || job.status === 'notrun') return 'error';
+
+      // Coverage (element) bilgisi yoksa, job tarafındaki success’i bir "best-effort"
+      // olarak kabul edelim (karsilastirma tutarsizligini azaltir).
+      const total = Number(cache?.totalElements || 0);
+      const tested = Number(cache?.testedElements || 0);
+      const failed = Number(cache?.failedElements || 0);
+      if (!total) return job.status === 'success' ? 'success' : 'error';
+
+      // Total varsa: failed > 0 => basarisiz, yoksa tested/total'e gore karar.
+      if (failed > 0) return 'error';
+      const ratio = tested / total;
+      return ratio >= SUCCESS_RATIO_THRESHOLD ? 'success' : 'error';
+    }
+
+    function scoreFromData(job, summary) {
+      const findings = parseFindings(summary?.cache?.findingsBySeverity);
+      const err = Number(findings.error || 0);
+      const critical = Number(findings.critical || 0);
+      const warn = Number(findings.warn || 0);
+      const info = Number(findings.info || 0);
+      let score = 100 - (critical * 20 + err * 12 + warn * 6 + info * 1);
+      if (job.status === 'running' || job.status === 'queued') score = Math.min(score, 70);
+      if (job.status === 'error' || job.status === 'notrun') score = Math.min(score, 35);
+
+      // Düşük coverage varsa skoru da kır.
+      const ratio = coverageRatioFromCache(summary?.cache || {});
+      if (ratio != null && ratio < SUCCESS_RATIO_THRESHOLD) score = Math.min(score, 55);
+
+      return Math.max(0, Math.min(100, Math.round(score)));
+    }
+
+    function progressFromStatus(status, score) {
+      if (status === 'success') return score;
+      if (status === 'running') return 45;
+      if (status === 'queued') return 15;
+      if (status === 'error' || status === 'notrun') return 100;
+      return 0;
+    }
+
+    async function refreshCurrent() {
+      const current = await getJson('/api/audits/current');
+      if (!current.id) {
+        document.getElementById('currentStatus').innerHTML = 'Henüz audit yok.';
+        document.getElementById('currentSummary').textContent = 'Henüz audit yok.';
+        document.getElementById('scoreStat').textContent = '%0';
+        document.getElementById('startedStat').textContent = '-';
+        document.getElementById('durationStat').textContent = '-';
+        document.getElementById('trafficStat').textContent = '0 / 0';
+        document.getElementById('auditProgress').style.width = '0%';
+        document.getElementById('progressText').textContent = 'Beklemede';
+        return;
+      }
+
+      const summary = await getJson(`/api/audits/${current.id}/summary`);
+      const score = scoreFromData(current, summary);
+      const progress = progressFromStatus(current.status, score);
+      const pages = Number(summary?.cache?.pagesScanned || 0);
+      const req = Number(summary?.cache?.requestsTotal || 0);
+
+      document.getElementById('currentStatus').innerHTML =
+        `ID: <b>${current.id}</b><br/>URL: ${current.targetUrl}<br/>Durum: ${statusBadge(current.status)}`;
+      document.getElementById('scoreStat').textContent = `%${score}`;
+      document.getElementById('startedStat').textContent = formatTs(current.startedAt || current.createdAt);
+      document.getElementById('durationStat').textContent = formatDuration(current.startedAt || current.createdAt, current.finishedAt);
+      document.getElementById('trafficStat').textContent = `${pages} / ${req}`;
+      document.getElementById('auditProgress').style.width = `${progress}%`;
+      document.getElementById('progressText').textContent = `Denetim ilerleme / kalite: %${progress}`;
+      document.getElementById('currentSummary').textContent = summary.summaryJson || JSON.stringify(summary.cache, null, 2);
+    }
+
+    async function refreshRecent() {
+      const list = await getJson('/api/audits/recent?limit=5');
+      const rows = list.map(x => {
+        const j = x.job;
+        const metrics = x.summary || {};
+        const cat = derivedStatus(j, metrics);
+        const files = ['summary','gaps','ui-inventory','console','network','request_failed','run.complete']
+          .map(f => `<a href="/api/audits/${j.id}/json/${f}" target="_blank">${f}</a>`).join(' | ');
+        return `<tr>
+          <td>${j.id}</td>
+          <td>${j.targetUrl}</td>
+          <td>${statusBadge(cat)}<br/><span class="muted">${formatTs(j.startedAt || j.createdAt)}</span></td>
+          <td>score=%${scoreFromData(j, { cache: metrics })}, ui=${(metrics.totalElements ? `${metrics.testedElements}/${metrics.totalElements} (${Math.round((metrics.testedElements/metrics.totalElements)*100)}%)` : '-')}, pages=${metrics.pagesScanned || 0}, req=${metrics.requestsTotal || 0}, skipped=${metrics.skippedNetwork || 0}</td>
+          <td>${files}</td>
+        </tr>`;
+      }).join('');
+      document.getElementById('recentRows').innerHTML = rows || '<tr><td colspan="5">Kayıt yok</td></tr>';
+    }
+
+    let allCache = [];
+    let statusFilter = 'all'; // 'all' | 'success' | 'running' | 'error'
+    let allLastFetchAt = 0;
+
+    function renderAll() {
+      const q = (document.getElementById('urlSearch').value || '').trim().toLowerCase();
+
+      const filtered = allCache.filter(x => {
+        const url = (x.job.targetUrl || '').toLowerCase();
+        const id = (x.job.id || '').toLowerCase();
+        const textOk = !q || url.includes(q) || id.includes(q);
+        if (!textOk) return false;
+
+        if (statusFilter === 'all') return true;
+        const cat = derivedStatus(x.job, x.cache || {});
+        if (statusFilter === 'success') return cat === 'success';
+        if (statusFilter === 'running') return cat === 'running';
+        if (statusFilter === 'error') return cat === 'error';
+        return true;
+      });
+
+      document.getElementById('allCountLabel').textContent = `${filtered.length} denetim`;
+
+      const rows = filtered.map(x => {
+        const j = x.job;
+        const c = x.cache || {};
+        const cat = derivedStatus(j, c);
+        const files = ['summary','gaps','ui-inventory','console','network','request_failed','run.complete']
+          .map(f => `<a href="/api/audits/${j.id}/json/${f}" target="_blank">${f}</a>`).join(' | ');
+        const total = Number(c.totalElements || 0);
+        const tested = Number(c.testedElements || 0);
+        const ratio = total ? (tested / total) : null;
+        const uiStr = ratio == null ? '-' : `${tested}/${total} (${Math.round(ratio * 100)}%)`;
+        return `<tr>
+          <td>${j.id}</td>
+          <td>${j.targetUrl}</td>
+          <td>${statusBadge(cat)}</td>
+          <td>score=%${x.score}, ui=${uiStr}, pages=${c.pagesScanned || 0}, req=${c.requestsTotal || 0}, skipped=${c.skippedNetwork || 0}</td>
+          <td>${files}</td>
+        </tr>`;
+      }).join('');
+
+      document.getElementById('allRows').innerHTML =
+        rows || '<tr><td colspan="5">Kayit yok</td></tr>';
+    }
+
+    async function refreshAll() {
+      const all = await getJson('/api/audits?limit=500');
+      allCache = all.map((x) => {
+        const job = x.job ?? x;
+        const cache = x.cache ?? {};
+        const score = scoreFromData(job, { cache });
+        return { job, cache, score };
+      });
+      renderAll();
+    }
+
+    async function refreshAllThrottled() {
+      const now = Date.now();
+      if (now - allLastFetchAt < 15000) return;
+      allLastFetchAt = now;
+      await refreshAll();
+    }
+
+    document.getElementById('startBtn').onclick = async () => {
+      const payload = {
+        targetUrl: document.getElementById('targetUrl').value.trim(),
+        loginMode: document.getElementById('loginMode').value,
+        identifier: document.getElementById('identifier').value.trim(),
+        password: document.getElementById('password').value.trim(),
+        maxLinks: Number(document.getElementById('maxLinks').value),
+        maxUiAttempts: Number(document.getElementById('maxUiAttempts').value)
+      };
+      try {
+        const res = await fetch('/api/audits', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Audit baslatilamadi');
+        document.getElementById('createResult').textContent = `Baslatildi: ${data.id}`;
+        await refreshCurrent();
+        await refreshRecent();
+      } catch (e) {
+        document.getElementById('createResult').textContent = `Hata: ${e.message}`;
+      }
+    };
+
+    const toTopBtn = document.getElementById('toTopBtn');
+    toTopBtn.onclick = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.addEventListener('scroll', () => {
+      if (window.scrollY > 250) toTopBtn.classList.add('show');
+      else toTopBtn.classList.remove('show');
+    });
+
+    refreshCurrent().catch(console.error);
+    refreshRecent().catch(console.error);
+    // JSON inceleme filtreleri
+    document.querySelectorAll('.filterBtn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const clicked = btn.dataset.filter || 'all';
+        statusFilter = statusFilter === clicked ? 'all' : clicked;
+        document.querySelectorAll('.filterBtn').forEach(b => b.classList.remove('active'));
+        if (statusFilter !== 'all') {
+          const activeBtn = document.querySelector(`.filterBtn[data-filter="${statusFilter}"]`);
+          if (activeBtn) activeBtn.classList.add('active');
+        }
+        renderAll();
+      });
+    });
+    document.getElementById('urlSearch').addEventListener('input', () => renderAll());
+
+    refreshAllThrottled().catch(console.error);
+    setInterval(() => {
+      refreshCurrent().catch(() => {});
+      refreshRecent().catch(() => {});
+      refreshAllThrottled().catch(() => {});
+    }, 5000);
+  </script>
+</body>
+</html>

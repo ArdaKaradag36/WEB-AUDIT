@@ -229,13 +229,13 @@ export async function buildLocator(page: Page, element: UiElement): Promise<Loca
       if (isGenericCssSelector(s.css)) {
         strategyUsed = `css:${s.css}`;
         const cnt = await page.locator(s.css).count();
-        return {
-          locator: page.locator(s.css).first(),
-          strategyUsed,
-          matchedCount: cnt,
-          reasonCode: "SELECTOR_UNSTABLE",
-          evidence: { selectorStrategy: strategyUsed, phase: "generic_tag_only", candidateFailures: candidateFailures.length ? candidateFailures : undefined },
-        };
+        // Generic tag-only selectors genelde kararsız olur (çok elemente eşleşir).
+        // Burada erken return yapmak yerine bir sonraki adaya devam edelim; böylece role/text/data-* gibi daha stabil stratejiler denenebilir.
+        candidateFailures.push({
+          strategy: strategyUsed,
+          error: `generic_css_tag_only(count=${cnt})`,
+        });
+        continue;
       }
       baseLocator = page.locator(s.css);
       strategyUsed = `css:${s.css}`;

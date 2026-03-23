@@ -1,0 +1,25 @@
+{
+  "Files": [
+    {
+      "Id": "/home/arda/software/WEB-AUDIT/audit-host/wwwroot/index.html",
+      "PackagePath": "staticwebassets/index.html"
+    },
+    {
+      "Id": "obj/Debug/net8.0/staticwebassets/msbuild.AuditHost.Microsoft.AspNetCore.StaticWebAssets.props",
+      "PackagePath": "build\\Microsoft.AspNetCore.StaticWebAssets.props"
+    },
+    {
+      "Id": "obj/Debug/net8.0/staticwebassets/msbuild.build.AuditHost.props",
+      "PackagePath": "build\\AuditHost.props"
+    },
+    {
+      "Id": "obj/Debug/net8.0/staticwebassets/msbuild.buildMultiTargeting.AuditHost.props",
+      "PackagePath": "buildMultiTargeting\\AuditHost.props"
+    },
+    {
+      "Id": "obj/Debug/net8.0/staticwebassets/msbuild.buildTransitive.AuditHost.props",
+      "PackagePath": "buildTransitive\\AuditHost.props"
+    }
+  ],
+  "ElementsToRemove": []
+}

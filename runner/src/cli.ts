@@ -32,6 +32,7 @@ import { getAuditAiProvider, writeGeneratedTests } from "./ai";
 import { logEvent, setLogContext } from "./core/log";
 import { crawlSite } from "./core/crawler/crawler";
 import type { CrawlerConfig } from "./core/crawler/types";
+import { dismissOverlaysSafely } from "./auto/overlays";
 
 function summarize(results: TestResult[]) {
   const count = (s: TestResult["status"]) => results.filter((r) => r.status === s).length;
@@ -100,6 +101,14 @@ async function main(): Promise<0 | 1 | 2> {
   }
 
   const targetUrl: string = targetUrlArg;
+  const targetHost = (() => {
+    try {
+      return new URL(targetUrl).hostname.toLowerCase();
+    } catch {
+      return "";
+    }
+  })();
+  const isNvi = targetHost === "www.nvi.gov.tr" || targetHost === "nvi.gov.tr";
   const maxUiAttemptsArg = getArg("--max-ui-attempts");
   const config = loadConfig({
     safeMode,
@@ -107,10 +116,36 @@ async function main(): Promise<0 | 1 | 2> {
     strict,
     browser: browserName,
     headless,
-    maxUiAttempts: maxUiAttemptsArg ? Number(maxUiAttemptsArg) : 30,
+    // maxUiAttempts default’u loadConfig’ten (220) gelsin.
+    maxUiAttempts: maxUiAttemptsArg ? Number(maxUiAttemptsArg) : undefined,
   });
   if (getArg("--click-allowlist")) {
     config.clickAllowlist = getCsvArg("--click-allowlist");
+  }
+
+  // Verimlilik icin cookie/consent banner’larini kapatacak default allowlisted buton metinleri.
+  // Kullanici kendi allowlist’ini verdiyse onu bozmayalim.
+  if (!config.clickAllowlist || config.clickAllowlist.length === 0) {
+    config.clickAllowlist = [
+      "kabul",
+      "kabul et",
+      "tümünü kabul",
+      "hepsini kabul",
+      "tamam",
+      "ok",
+      "agree",
+      "accept",
+      "accept all",
+      "allow",
+      "allow all",
+      "continue",
+      "devam",
+      "devam et",
+      "next",
+      "onayla",
+      "onay",
+      "hepsini",
+    ];
   }
 
   // All artifacts are written into a temp directory first and only moved
@@ -227,9 +262,18 @@ async function main(): Promise<0 | 1 | 2> {
     return 1; // crash
   }
 
-  // 0) BLOCKED tespiti
-  const hasCaptcha = await detectCaptcha(page);
-  if (hasCaptcha) {
+  // 0) BLOCKED tespiti (captcha/auth ayrimi)
+  // Cookie/consent vb overlayler login/captcha tespitini ve UI taramasini bozmasin diye,
+  // captcha tespitinden hemen once best-effort overlay dismiss deniyoruz.
+  try {
+    await dismissOverlaysSafely(page);
+  } catch {}
+
+  let captchaBlocked = await detectCaptcha(page);
+  let authBlocked = false;
+  let loginRequired = false;
+
+  if (captchaBlocked) {
     const shotPath = artifactPathInRun(tempDir, "blocked_captcha.png");
     try {
       await page.screenshot({ path: shotPath, fullPage: true });
@@ -247,27 +291,33 @@ async function main(): Promise<0 | 1 | 2> {
     if (!requiresPlugins.includes("manual-review")) requiresPlugins.push("manual-review");
   }
 
-  const loginRequired = await detectLogin(page);
-  if (loginRequired) {
-    const shotPath = artifactPathInRun(tempDir, "blocked_login.png");
-    try {
-      await page.screenshot({ path: shotPath, fullPage: true });
-    } catch {}
-    addArtifact(artifacts, "SCREENSHOT", shotPath);
+  if (!captchaBlocked) {
+    loginRequired = await detectLogin(page);
 
-    results.push({
-      code: "CORE.AUTH.REQUIRED",
-      title: "Authentication appears required (login detected)",
-      status: "BLOCKED",
-      errorMessage: "Login detected. Requires AUTH plugin with credentials/SSO flow.",
-      evidence: fs.existsSync(shotPath) ? [shotPath] : undefined,
-    });
-
-    if (!requiresPlugins.includes("auth-basic")) requiresPlugins.push("auth-basic");
+    // Login algilandiysa ve credentials varsa auth-basic'i otomatik ekle.
+    if (
+      loginRequired &&
+      !pluginNames.includes("auth-basic") &&
+      (process.env.AUDIT_USER ||
+        process.env.AUDIT_EMAIL ||
+        process.env.AUDIT_USERNAME ||
+        process.env.AUDIT_PHONE) &&
+      (process.env.AUDIT_PASS || process.env.AUDIT_PASSWORD)
+    ) {
+      pluginNames.push("auth-basic");
+    }
+    if (loginRequired && !requiresPlugins.includes("auth-basic")) {
+      requiresPlugins.push("auth-basic");
+    }
   }
 
-  // 1) Plugin'leri çalıştır
-  for (const name of pluginNames) {
+  // 1) Plugin'leri çalıştır (captcha yoksa)
+  if (!captchaBlocked) {
+    // Cookie/consent plugin’leri verimlilik icin her sitede calismali.
+    if (!pluginNames.includes("cookie-consent")) pluginNames.unshift("cookie-consent");
+    if (isNvi && !pluginNames.includes("nvi-cookie-consent")) pluginNames.unshift("nvi-cookie-consent");
+
+    for (const name of pluginNames) {
     const plugin = pluginRegistry[name];
 
     if (!plugin) {
@@ -302,27 +352,55 @@ async function main(): Promise<0 | 1 | 2> {
         errorMessage: e?.message ?? "plugin threw an error",
       });
     }
-  }
+    }
 
-  const isBlocked = results.some((r) => r.status === "BLOCKED");
+    // Plugin denemelerinden sonra tekrar login/captcha kontrolu
+    captchaBlocked = await detectCaptcha(page);
+    if (captchaBlocked && !results.some((r) => r.code === "CORE.CAPTCHA.DETECTED")) {
+      const shotPath = artifactPathInRun(tempDir, "blocked_captcha_after_plugin.png");
+      try {
+        await page.screenshot({ path: shotPath, fullPage: true });
+      } catch {}
+      addArtifact(artifacts, "SCREENSHOT", shotPath);
+      results.push({
+        code: "CORE.CAPTCHA.DETECTED",
+        title: "Captcha detected (automation cannot proceed without human/approved bypass)",
+        status: "BLOCKED",
+        errorMessage: "Captcha detected after auth/plugin phase. Requires site-specific handling.",
+        evidence: fs.existsSync(shotPath) ? [shotPath] : undefined,
+      });
+    }
+
+    if (!captchaBlocked) {
+      authBlocked = await detectLogin(page);
+      if (authBlocked) {
+        const shotPath = artifactPathInRun(tempDir, "blocked_login.png");
+        try {
+          await page.screenshot({ path: shotPath, fullPage: true });
+        } catch {}
+        addArtifact(artifacts, "SCREENSHOT", shotPath);
+
+        results.push({
+          code: "CORE.AUTH.REQUIRED",
+          title: "Authentication appears required (login detected)",
+          status: "BLOCKED",
+          errorMessage: "Login detected. Best-effort audit continues with partial coverage.",
+          evidence: fs.existsSync(shotPath) ? [shotPath] : undefined,
+        });
+      }
+    }
+  }
 
 
   // 1.4) UI HEURISTICS (siteye özel script olmadan "elimden gelen" kontroller)
-  if (isBlocked) {
-    results.push({
-      code: "UI.HEURISTICS.SKIPPED",
-      title: "UI heuristics skipped because audit is BLOCKED",
-      status: "SKIPPED",
-      errorMessage: "Skipped due to captcha/auth block.",
-    });
-  } else {
+  if (!captchaBlocked) {
     try {
       await runUiHeuristics({
         page,
           outDir: tempDir,
         results,
         artifacts,
-        options: { sampleLimit: 20, a11yStrict: strict },
+        options: { sampleLimit: 40, a11yStrict: strict },
       });
     } catch (e: any) {
       results.push({
@@ -332,16 +410,23 @@ async function main(): Promise<0 | 1 | 2> {
         errorMessage: e?.message ?? "ui heuristics threw",
       });
     }
+  } else {
+    results.push({
+      code: "UI.HEURISTICS.SKIPPED",
+      title: "UI heuristics skipped because captcha was detected",
+      status: "SKIPPED",
+      errorMessage: "Skipped due to captcha block.",
+    });
   }
 
   // 1.5) ELEMENT SPEC (pluginlerden sonra)
   if (resolvedSpecPath) {
-    if (isBlocked) {
+    if (captchaBlocked) {
       results.push({
         code: "ELM.SPEC.SKIPPED",
-        title: "Element spec skipped because audit is BLOCKED",
+        title: "Element spec skipped because captcha was detected",
         status: "SKIPPED",
-        errorMessage: "Skipped due to captcha/auth block.",
+        errorMessage: "Skipped due to captcha block.",
       });
     } else {
       try {
@@ -365,7 +450,7 @@ async function main(): Promise<0 | 1 | 2> {
     results.push({
       code: "ELM.SPEC.NOT_PROVIDED",
       title: "Element spec was not provided",
-      status: "SKIPPED",
+      status: "NA",
       errorMessage: "Run without --spec (site-specific UI checks not executed).",
     });
   }
@@ -407,12 +492,12 @@ async function main(): Promise<0 | 1 | 2> {
 
   // 4) Link sampling
   let skippedNetworkFromLinks = 0;
-  if (isBlocked) {
+  if (captchaBlocked) {
     results.push({
       code: "CORE.LINKS.SAMPLE_OK",
       title: `Sampled ${linkLimit} links and ensured they are reachable`,
       status: "SKIPPED",
-      errorMessage: "Skipped because audit is BLOCKED (captcha/auth).",
+      errorMessage: "Skipped because captcha blocked link traversal.",
     });
   } else {
     try {
@@ -500,7 +585,7 @@ async function main(): Promise<0 | 1 | 2> {
 
   // 4.5) Crawler – BFS crawl with budgets to increase real coverage.
   let pagesScannedFromCrawler = 0;
-  if (!isBlocked) {
+  if (!captchaBlocked) {
     try {
       const crawlerConfig: CrawlerConfig = {
         startUrl: targetUrl,
@@ -557,16 +642,16 @@ async function main(): Promise<0 | 1 | 2> {
   let uiInventory: UiInventory | null = null;
   let gaps: UiGap[] = [];
   try {
-    const skipAll: ReasonCode | undefined = isBlocked
-      ? (hasCaptcha ? "CAPTCHA_DETECTED" : "REQUIRES_AUTH")
+    const skipAll: ReasonCode | undefined = captchaBlocked
+      ? "CAPTCHA_DETECTED"
       : undefined;
     const elements = await domScan({
       page,
       pageUrl: targetUrl,
-      isBlocked,
+      isBlocked: captchaBlocked || authBlocked,
       skipReasonsForAll: skipAll,
     });
-    if (!isBlocked && elements.length > 0) {
+    if (!captchaBlocked && elements.length > 0) {
       const auditResult = await runAutoUiAudit({
         page,
         elements,
@@ -576,6 +661,8 @@ async function main(): Promise<0 | 1 | 2> {
           maxAttemptsTotal: config.maxUiAttempts ?? 150,
           maxAttempts: config.maxUiAttempts,
           clickAllowlist: config.clickAllowlist,
+          scrollSteps: 10,
+          maxAttemptsPerScrollStep: 45,
         },
       });
       uiInventory = {
@@ -662,7 +749,7 @@ async function main(): Promise<0 | 1 | 2> {
     startedAt,
     finishedAt: finishedAt(),
     runnerVersion,
-    status: isBlocked ? "blocked" : "ok",
+    status: captchaBlocked || authBlocked ? "blocked" : "ok",
   };
   const runConfig: RunConfig = {
     headless,

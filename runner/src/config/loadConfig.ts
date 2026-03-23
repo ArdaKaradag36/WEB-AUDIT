@@ -24,12 +24,12 @@ export type AuditConfig = {
 
 const DEFAULTS: AuditConfig = {
   safeMode: true,
-  maxLinks: 20,
+  maxLinks: 35,
   strict: false,
   browser: "chromium",
   headless: true,
   clickAllowlist: [],
-  maxUiAttempts: 150,
+  maxUiAttempts: 220,
   aiProviderEnabled: false,
 };
 
