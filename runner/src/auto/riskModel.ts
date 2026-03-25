@@ -5,18 +5,24 @@
 
 import type { RiskLevel } from "../domain/uiInventory";
 
-const DESTRUCTIVE_TEXT_PATTERNS = [
+const HARD_DESTRUCTIVE_TEXT_PATTERNS = [
   "delete",
   "remove",
-  "pay",
-  "checkout",
-  "confirm",
   "logout",
   "sign out",
   "sil",
   "kaldır",
-  "ödeme",
   "çıkış",
+];
+
+const REVIEW_REQUIRED_TEXT_PATTERNS = [
+  "pay",
+  "checkout",
+  "confirm",
+  "submit",
+  "approve",
+  "ödeme",
+  "onayla",
 ];
 
 export type RiskInput = {
@@ -38,8 +44,11 @@ export function scoreRisk(input: RiskInput): RiskLevel {
   if (href && (href.includes("logout") || href.includes("log-out") || href.includes("signout") || href.includes("delete") || href.includes("sil"))) {
     return "destructive";
   }
-  if (DESTRUCTIVE_TEXT_PATTERNS.some((p) => text.includes(p) || href.includes(p))) {
+  if (HARD_DESTRUCTIVE_TEXT_PATTERNS.some((p) => text.includes(p) || href.includes(p))) {
     return "destructive";
+  }
+  if (REVIEW_REQUIRED_TEXT_PATTERNS.some((p) => text.includes(p) || href.includes(p))) {
+    return "needs_allowlist";
   }
   if (input.type === "submit") {
     return "needs_allowlist";
@@ -47,14 +56,18 @@ export function scoreRisk(input: RiskInput): RiskLevel {
   if (input.tag === "a" && href) {
     try {
       const url = new URL(href);
+      if (url.protocol === "mailto:" || url.protocol === "tel:" || url.protocol === "sms:") {
+        return "safe";
+      }
+      const host = url.hostname.toLowerCase();
+      if (host === "wa.me" || host.endsWith(".wa.me") || host.includes("whatsapp")) {
+        return "safe";
+      }
       const main = input.mainOrigin ? new URL(input.mainOrigin).origin : "";
       if (main && url.origin !== main && (url.protocol === "http:" || url.protocol === "https:")) {
         return "needs_allowlist";
       }
     } catch {}
-  }
-  if (input.tag === "a" && (href.startsWith("mailto:") || href.startsWith("tel:"))) {
-    return "needs_allowlist";
   }
   return "safe";
 }

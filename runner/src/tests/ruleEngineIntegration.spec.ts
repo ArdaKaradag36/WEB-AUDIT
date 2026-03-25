@@ -23,6 +23,10 @@ test("rule engine combines HTTP, cookie, JS and network rules", () => {
     ],
     thirdPartyOrigins: [
       "https://api.example.com",
+    ],
+    // responseUrls is what js/analyzer reads for sourcemap detection (KWA-JS-003).
+    responseUrls: [
+      "https://example.com/static/app.js",
       "https://example.com/static/app.js.map",
     ],
   };
@@ -39,5 +43,32 @@ test("rule engine combines HTTP, cookie, JS and network rules", () => {
 
   // JS/sourcemap or network rules should also be present via js analyzer.
   expect(ruleIds.some((id) => id.startsWith("KWA-JS-"))).toBeTruthy();
+});
+
+test("rule engine: blocker only for captcha BLOCKED, not AUTH WARN", () => {
+  const empty: RuleEngineInput = {
+    targetUrl: "https://example.com",
+    results: [],
+    consoleIssues: [],
+    pageErrors: [],
+    networkIssues: [],
+    linkChecks: [],
+  };
+
+  const authWarn = runRuleEngine({
+    ...empty,
+    results: [
+      { code: "CORE.AUTH.REQUIRED", title: "Auth", status: "WARN" },
+    ] as any,
+  });
+  expect(authWarn.some((f) => f.ruleId === "blocker")).toBe(false);
+
+  const captchaBlocked = runRuleEngine({
+    ...empty,
+    results: [
+      { code: "CORE.CAPTCHA.DETECTED", title: "Captcha", status: "BLOCKED" },
+    ] as any,
+  });
+  expect(captchaBlocked.some((f) => f.ruleId === "blocker")).toBe(true);
 });
 

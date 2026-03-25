@@ -15,7 +15,10 @@ async function runLoginSteps(page: Page, steps: LoginStep[]): Promise<void> {
         await page.goto(step.url, { waitUntil: "domcontentloaded", timeout: 45_000 });
         break;
       case "waitFor":
-        await page.waitForTimeout(step.ms);
+        // Prefer waitForLoadState over hard-sleep to avoid flakiness.
+        await page.waitForLoadState("networkidle").catch(() =>
+          page.waitForLoadState("domcontentloaded").catch(() => {})
+        );
         break;
       case "fill":
         await page.locator(step.selector).first().fill(step.value, { timeout: 15_000 });

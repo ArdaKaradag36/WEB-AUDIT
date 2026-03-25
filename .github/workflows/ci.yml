@@ -7,6 +7,36 @@ on:
     branches: [main, master]
 
 jobs:
+  audit-host:
+    name: audit-host (.NET 8) – build & tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore & build audit-host
+        working-directory: audit-host
+        run: dotnet build -c Release
+
+      - name: Test AuditHost.Tests
+        run: dotnet test audit-host/AuditHost.Tests/AuditHost.Tests.csproj -c Release
+
+      - name: Package list (SBOM-ish)
+        working-directory: audit-host
+        run: dotnet list AuditHost.csproj package --include-transitive > sbom-nuget.txt
+
+      - name: Upload NuGet package list
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-nuget
+          path: audit-host/sbom-nuget.txt
+
   runner:
     name: Runner (Node + Playwright) – lint & tests
     runs-on: ubuntu-latest
@@ -31,7 +61,7 @@ jobs:
         run: npm run lint
 
       - name: Unit & integration tests
-        run: npm test
+        run: SKIP_A11Y=1 npm test
 
       - name: Upload test artifacts (runner)
         if: always()
@@ -43,10 +73,46 @@ jobs:
             reports/runs/**
           if-no-files-found: ignore
 
+  a11y-tests:
+    name: Accessibility tests (axe-core/playwright)
+    runs-on: ubuntu-latest
+    needs: [runner]
+    defaults:
+      run:
+        working-directory: runner
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: "runner/.nvmrc"
+          cache: "npm"
+          cache-dependency-path: "runner/package-lock.json"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run a11y tests only
+        run: AUDIT_ALLOW_PRIVATE_TARGETS=true npx playwright test src/tests/a11y-axe.spec.ts
+
+      - name: Upload a11y report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a11y-report
+          path: runner/playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore
+
   security-audit:
     name: Dependency Security Audit (report-only)
     runs-on: ubuntu-latest
-    needs: [runner]
+    needs: [runner, audit-host]
     steps:
       - name: Checkout
         uses: actions/checkout@v4

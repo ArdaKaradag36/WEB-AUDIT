@@ -1,3 +1,5 @@
+import { sanitizeValue } from './sanitize';
+
 export type LogLevel = "INFO" | "WARN" | "ERROR";
 
 type LogContext = {
@@ -15,13 +17,14 @@ export function setLogContext(context: LogContext) {
 
 // Minimal JSON logger for the runner; logs one line per event.
 export function logEvent(event: string, payload: Record<string, unknown> = {}, level: LogLevel = "INFO") {
+  const safePayload = sanitizeValue(payload) as Record<string, unknown>;
   const record = {
     ts: new Date().toISOString(),
     level,
     service: "runner",
     event,
     ...baseContext,
-    ...payload,
+    ...safePayload,
   };
   // eslint-disable-next-line no-console
   console.log(JSON.stringify(record));

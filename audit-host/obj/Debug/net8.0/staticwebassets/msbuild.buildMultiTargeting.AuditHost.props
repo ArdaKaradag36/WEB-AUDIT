@@ -1,3 +1,0 @@
-﻿<Project>
-  <Import Project="../build/AuditHost.props" />
-</Project>

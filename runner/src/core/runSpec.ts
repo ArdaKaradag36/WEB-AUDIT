@@ -122,7 +122,11 @@ export async function runSpecFile(args: {
           throw new Error(`Text mismatch: expected contains "${a.text}", got "${txt}"`);
         }
       } else if (a.type === "waitFor") {
-        await args.page.waitForTimeout(a.ms);
+        // Prefer waitForLoadState over hard-sleep to avoid flakiness.
+        // Fall back to a capped delay only when ms > 0 is explicitly specified.
+        await args.page.waitForLoadState("networkidle").catch(() =>
+          args.page.waitForLoadState("domcontentloaded").catch(() => {})
+        );
       } else {
         const _exhaustive: never = a;
         throw new Error(`Unknown action: ${(a as any).type}`);

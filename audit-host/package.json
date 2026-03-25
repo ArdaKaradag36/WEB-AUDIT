@@ -1,0 +1,8 @@
+{
+  "name": "audit-host-dashboard",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/dashboard-metrics.test.mjs"
+  }
+}

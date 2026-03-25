@@ -23,6 +23,10 @@ function escapeHrefForCss(href: string): string {
   return href.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
+function escapeAttrForCss(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
 function isVoidOrEmptyHref(href: string): boolean {
   if (!href || !href.trim()) return true;
   const h = href.trim().toLowerCase();
@@ -30,6 +34,9 @@ function isVoidOrEmptyHref(href: string): boolean {
 }
 
 function inferElementType(tag: string, role: string, type: string, href: string): ElementType {
+  if (tag === "summary") return "button";
+  if (role === "link") return "link";
+  if (role === "switch" || role === "checkbox" || role === "menuitemcheckbox") return "checkbox";
   if (tag === "a" && href) return "link";
   if (tag === "button" || role === "button") return "button";
   if (tag === "input") {
@@ -57,6 +64,9 @@ function buildStructuredSelectors(el: {
   href: string;
   text: string;
   dataAttrs: Record<string, string>;
+  ariaControls?: string;
+  contextId?: string;
+  contextRole?: string;
 }): RecommendedSelector[] {
   const out: RecommendedSelector[] = [];
   const hasStableDataAttr = DATA_ATTRS.some((k) => el.dataAttrs[k]);
@@ -74,12 +84,48 @@ function buildStructuredSelectors(el: {
     const hrefEscaped = escapeHrefForCss(el.href);
     out.push({ strategy: "css", css: `a[href="${hrefEscaped}"]`, preferred: !hasStableDataAttr });
   }
+  if (el.ariaControls) {
+    out.push({
+      strategy: "css",
+      css: `${el.tag}[aria-controls="${escapeAttrForCss(el.ariaControls)}"]`,
+      preferred: false,
+    });
+  }
+  if (el.name) {
+    out.push({
+      strategy: "css",
+      css: `${el.tag}[name="${escapeAttrForCss(el.name)}"]`,
+      preferred: false,
+    });
+  }
+  if (el.ariaLabel) {
+    out.push({
+      strategy: "css",
+      css: `${el.tag}[aria-label="${escapeAttrForCss(el.ariaLabel)}"]`,
+      preferred: false,
+    });
+  }
   if (el.id && /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(el.id)) {
     out.push({ strategy: "css", css: `#${el.id}`, preferred: out.length === 0 });
   }
+  if (el.contextId) {
+    out.push({
+      strategy: "css",
+      css: `#${escapeAttrForCss(el.contextId)} ${el.tag}`,
+      preferred: false,
+    });
+  }
+  if (el.contextRole) {
+    out.push({
+      strategy: "css",
+      css: `[role="${escapeAttrForCss(el.contextRole)}"] ${el.tag}`,
+      preferred: false,
+    });
+  }
   const nameForRole = ((el.ariaLabel || el.text) ?? "").trim().slice(0, 100);
   if (el.role && nameForRole) {
-    out.push({ strategy: "role", role: el.role, name: nameForRole, exact: false, preferred: out.length === 0 });
+    out.push({ strategy: "role", role: el.role, name: nameForRole, exact: true, preferred: out.length === 0 });
+    out.push({ strategy: "role", role: el.role, name: nameForRole, exact: false, preferred: false });
   }
   if (el.tag === "input" && (el.ariaLabel || el.placeholder)) {
     out.push({ strategy: "label", label: el.ariaLabel || el.placeholder, preferred: false });
@@ -110,8 +156,7 @@ function toLegacy(selectors: RecommendedSelector[]): Array<{ strategy: string; s
 export type ScanInput = {
   page: Page;
   pageUrl: string;
-  isBlocked: boolean;
-  /** When set, all elements get this reason (e.g. REQUIRES_AUTH, CAPTCHA_DETECTED). */
+  /** When set, all elements get this reason (e.g. CAPTCHA_DETECTED). */
   skipReasonsForAll?: ReasonCode;
 };
 
@@ -137,11 +182,25 @@ export async function domScan(input: ScanInput): Promise<UiElement[]> {
     const getText = (el: Element) => (el as HTMLElement).innerText?.trim().slice(0, 200) ?? "";
     const attr = (el: Element, name: string) => el.getAttribute(name) ?? "";
 
-    const interactive = Array.from(
-      document.querySelectorAll(
-        "button, a[href], input, select, textarea, [role='button'], [role='tab'], [role='menuitem']"
-      )
-    );
+    const INTERACTIVE_SEL =
+      "button, a[href], input, select, textarea, summary, " +
+      "[role='button'], [role='tab'], [role='menuitem'], [role='link'], [role='switch'], [role='checkbox'], [role='menuitemcheckbox']";
+    const MAX_SHADOW = 5;
+    const seenNodes = new Set<Element>();
+    const interactive: Element[] = [];
+    function collectInteractive(root: Document | ShadowRoot | null, depth: number): void {
+      if (!root || depth > MAX_SHADOW) return;
+      root.querySelectorAll(INTERACTIVE_SEL).forEach((el) => {
+        if (!seenNodes.has(el)) {
+          seenNodes.add(el);
+          interactive.push(el);
+        }
+      });
+      root.querySelectorAll("*").forEach((host) => {
+        if (host.shadowRoot) collectInteractive(host.shadowRoot, depth + 1);
+      });
+    }
+    collectInteractive(document, 0);
 
     const boilerplateRe = /\b(open submenu|close submenu|toggle navigation)\b/gi;
     const sanitize = (s: string) => (s ?? "").replace(boilerplateRe, "").replace(/\s+/g, " ").trim();
@@ -170,7 +229,24 @@ export async function domScan(input: ScanInput): Promise<UiElement[]> {
       const ariaControls = (attr(el, "aria-controls") ?? "").slice(0, 40);
       const ariaHaspopup = (attr(el, "aria-haspopup") ?? "").slice(0, 20);
       const dataStable = (dataAttrsObj["data-testid"] || dataAttrsObj["data-test"] || dataAttrsObj["data-qa"] || "").slice(0, 40);
-      const elementKey = [tag, role, normalize(sanitize(text)).slice(0, 80), hrefOrSrc, normalize(sanitize(ariaLabel)), name || placeholder, type, (id ?? "").slice(0, 40), ariaControls, ariaHaspopup, dataStable].join("|");
+      const contextAnchor = (el.closest("[id]") as HTMLElement | null)?.id?.slice(0, 60) || "";
+      const roleHost = el.closest("[role]") as Element | null;
+      const contextRole = (roleHost?.getAttribute("role") ?? "").slice(0, 40);
+      const elementKey = [
+        tag,
+        role,
+        normalize(sanitize(text)).slice(0, 80),
+        hrefOrSrc,
+        normalize(sanitize(ariaLabel)),
+        name || placeholder,
+        type,
+        (id ?? "").slice(0, 40),
+        ariaControls,
+        ariaHaspopup,
+        dataStable,
+        contextAnchor,
+        contextRole,
+      ].join("|");
       return {
         index: idx,
         tag,
@@ -187,6 +263,9 @@ export async function domScan(input: ScanInput): Promise<UiElement[]> {
         name,
         placeholder,
         dataAttrs: dataAttrsObj,
+        ariaControls,
+        contextAnchor,
+        contextRole,
         elementKey,
       };
     });
@@ -208,6 +287,9 @@ export async function domScan(input: ScanInput): Promise<UiElement[]> {
       href: el.href,
       text: textSanitized,
       dataAttrs: el.dataAttrs || {},
+      ariaControls: el.ariaControls,
+      contextId: el.contextAnchor,
+      contextRole: el.contextRole,
     });
     const riskLevel = scoreRisk({
       tag: el.tag,

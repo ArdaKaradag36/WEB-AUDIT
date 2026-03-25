@@ -24,7 +24,11 @@ export type FindingCategory =
   | "blocker"
   | "cookies"
   | "cors"
-  | "mixed_content";
+  | "mixed_content"
+  | "accessibility"
+  | "mobile"
+  | "seo"
+  | "privacy";
 
 export type Finding = {
   ruleId: string;

@@ -1,0 +1,31 @@
+# KEDA: scale WebAudit queue workers from PostgreSQL queue depth.
+# Prerequisites: KEDA installed, Secret 'webaudit-postgres' with connection string, metrics from:
+#   SELECT count(*) FROM audit_jobs WHERE status = 'queued';
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: webaudit-postgres-trigger
+  namespace: default
+spec:
+  secretTargetRef:
+    - parameter: connectionString
+      name: webaudit-postgres
+      key: connectionString
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: webaudit-queue-worker
+  namespace: default
+spec:
+  scaleTargetRef:
+    name: webaudit-queue-worker
+  minReplicaCount: 0
+  maxReplicaCount: 20
+  triggers:
+    - type: postgresql
+      metadata:
+        query: "SELECT CEIL(COUNT(*)::float / 2) FROM audit_jobs WHERE status = 'queued'"
+        targetQueryValue: "1"
+      authenticationRef:
+        name: webaudit-postgres-trigger

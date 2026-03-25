@@ -27,3 +27,17 @@
 Thumbs.db
 .vscode/
 .idea/
+
+# .NET build artifacts
+audit-host/bin/
+audit-host/obj/
+audit-host/*.db
+WebAudit.*/bin/
+WebAudit.*/obj/
+*.user
+*.sln.DotSettings.user
+
+# Runner build and runtime outputs
+runner/dist/
+runner/reports/
+runner/cli-smoke*/

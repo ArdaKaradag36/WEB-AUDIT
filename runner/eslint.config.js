@@ -8,6 +8,18 @@ module.exports = [
     ignores: ["dist/**", "node_modules/**", "**/*.js"],
   },
   {
+    files: ['src/auto/**/*.ts', 'src/core/**/*.ts', 'src/plugins/**/*.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.property.name='waitForTimeout']",
+          message: 'Hard waits (waitForTimeout) are banned in core/auto/plugin paths. Use locator.waitFor(), page.waitForURL(), page.waitForSelector(), or page.waitForLoadState() instead.',
+        },
+      ],
+    },
+  },
+  {
     files: ["src/**/*.ts"],
     languageOptions: {
       parser: tsParser,

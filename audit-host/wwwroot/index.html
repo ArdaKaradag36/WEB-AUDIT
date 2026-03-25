@@ -19,6 +19,8 @@
     .badge { display: inline-block; border-radius: 999px; padding: 2px 8px; font-size: 12px; }
     .running { background: #0369a1; }
     .success { background: #166534; }
+    /** Runner tamamlandi ama UI coverage dusuk veya bazi etkilesimler basarisiz (surec hatasi degil). */
+    .partial { background: #b45309; }
     .error, .notrun { background: #991b1b; }
     .queued { background: #92400e; }
     .stats { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); margin-top: 8px; }
@@ -28,6 +30,22 @@
     .progressWrap { width: 100%; height: 12px; background: #0b1220; border: 1px solid #334155; border-radius: 999px; overflow: hidden; margin-top: 10px; }
     .progressBar { height: 100%; background: linear-gradient(90deg, #ef4444, #f59e0b, #22c55e); width: 0%; transition: width 0.4s ease; }
     .muted { color: #94a3b8; font-size: 12px; }
+    .finding-card { border-left: 4px solid #334155; padding: 10px 14px; margin: 6px 0; border-radius: 0 6px 6px 0; background: #0b1220; }
+    .finding-card.sev-critical { border-color: #dc2626; }
+    .finding-card.sev-error    { border-color: #ef4444; }
+    .finding-card.sev-warn     { border-color: #f59e0b; }
+    .finding-card.sev-info     { border-color: #3b82f6; }
+    .finding-card .fc-title    { font-weight: 600; font-size: 14px; }
+    .finding-card .fc-meta     { font-size: 11px; color: #94a3b8; margin-bottom: 4px; }
+    .finding-card .fc-detail   { font-size: 13px; color: #cbd5e1; margin: 4px 0; }
+    .finding-card .fc-remed    { font-size: 12px; color: #86efac; margin-top: 4px; }
+    .finding-card details summary { cursor: pointer; font-size: 12px; color: #94a3b8; }
+    .sev-badge { display:inline-block; border-radius:4px; padding:1px 7px; font-size:11px; font-weight:700; margin-right:4px; }
+    .sev-badge.critical { background:#7f1d1d; color:#fca5a5; }
+    .sev-badge.error    { background:#7f1d1d; color:#fca5a5; }
+    .sev-badge.warn     { background:#78350f; color:#fde68a; }
+    .sev-badge.info     { background:#1e3a5f; color:#93c5fd; }
+    .findings-group h4  { margin: 12px 0 4px; font-size: 13px; color: #94a3b8; text-transform:uppercase; letter-spacing:.5px; }
     .toTop {
       position: fixed;
       right: 18px;
@@ -94,6 +112,112 @@
       color: #450a0a !important;
       box-shadow: 0 10px 22px rgba(185, 28, 28, 0.35);
     }
+    .allAuditsScroll {
+      max-height: min(70vh, 560px);
+      overflow-y: auto;
+      overflow-x: auto;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      margin-top: 8px;
+      background: #0b1220;
+    }
+    .allAuditsScroll table { margin: 0; }
+    .btnDel {
+      width: auto !important;
+      margin: 0 !important;
+      padding: 7px 14px !important;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      border-radius: 8px !important;
+      border: 1px solid #f87171 !important;
+      color: #fff !important;
+      background: linear-gradient(180deg, #ef4444, #dc2626) !important;
+      box-shadow: 0 2px 8px rgba(239, 68, 68, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
+      transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+    }
+    .btnDel:hover {
+      background: linear-gradient(180deg, #f87171, #ef4444) !important;
+      border-color: #fca5a5 !important;
+      box-shadow: 0 4px 14px rgba(239, 68, 68, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+      filter: brightness(1.05);
+      transform: translateY(-1px);
+    }
+    .btnDel:active {
+      transform: translateY(0);
+      filter: brightness(0.98);
+    }
+
+    .summaryResultLayout {
+      display: grid;
+      grid-template-columns: minmax(240px, 340px) 1fr;
+      gap: 24px;
+      align-items: start;
+      margin-top: 8px;
+    }
+    @media (max-width: 900px) {
+      .summaryResultLayout { grid-template-columns: 1fr; }
+    }
+    .summaryChartCol {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      align-items: center;
+    }
+    .chartWrap {
+      width: 100%;
+      max-width: 300px;
+      text-align: center;
+    }
+    .chartWrap canvas {
+      display: block;
+      margin: 0 auto;
+      max-width: 100%;
+      height: auto;
+    }
+    .chartCaption {
+      font-size: 12px;
+      color: #94a3b8;
+      margin-top: 8px;
+    }
+    .summaryTextCol {
+      background: #0b1220;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 14px 16px;
+      min-height: 120px;
+    }
+    .summaryTextCol h3 {
+      margin: 0 0 12px;
+      font-size: 15px;
+      color: #f1f5f9;
+    }
+    .kv {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 6px 12px;
+      font-size: 13px;
+      line-height: 1.45;
+      margin-bottom: 6px;
+    }
+    .kv .k { color: #94a3b8; }
+    .kv .v { color: #e2e8f0; word-break: break-all; }
+    .rawJsonWrap {
+      margin-top: 14px;
+      border-top: 1px solid #334155;
+      padding-top: 10px;
+    }
+    .rawJsonWrap summary {
+      cursor: pointer;
+      color: #93c5fd;
+      font-size: 13px;
+      user-select: none;
+    }
+    .rawJsonWrap pre {
+      margin-top: 8px;
+      max-height: 240px;
+    }
   </style>
 </head>
 <body>
@@ -101,40 +225,56 @@
   <div class="grid">
     <section class="card">
       <h2>Denetim Oluştur</h2>
-      <label>Hedef URL</label>
-      <input id="targetUrl" value="https://cursor.com/download" />
-      <label>Giriş Türü</label>
+      <label for="targetUrl">Hedef URL</label>
+      <input id="targetUrl" value="https://example.com" autocomplete="url" />
+      <label for="loginMode">Giriş Türü</label>
       <select id="loginMode">
         <option value="none">Yok</option>
         <option value="email">E-posta</option>
         <option value="username">Kullanıcı adı</option>
         <option value="phone">Telefon</option>
       </select>
-      <label>Identifier (opsiyonel)</label>
+      <label for="identifier">Identifier (opsiyonel)</label>
       <input id="identifier" placeholder="eposta / username / telefon" />
-      <label>Password (opsiyonel)</label>
+      <label for="password">Password (opsiyonel)</label>
       <input id="password" type="password" />
       <div class="row">
         <div>
-          <label>maxLinks</label>
+          <label for="maxLinks">maxLinks</label>
           <input id="maxLinks" type="number" value="35" />
         </div>
         <div>
-          <label>maxUiAttempts</label>
+          <label for="maxUiAttempts">maxUiAttempts</label>
           <input id="maxUiAttempts" type="number" value="220" />
         </div>
       </div>
-      <button id="startBtn">Denetimi Başlat</button>
+      <label for="externalTicket">Harici ticket / onay ID (opsiyonel)</label>
+      <input id="externalTicket" placeholder="Jira / ServiceNow referansı" autocomplete="off" />
+      <label for="apiKeyInput">API anahtarı (opsiyonel)</label>
+      <input id="apiKeyInput" type="password" autocomplete="off" placeholder="Sunucuda AUDIT_HOST_API_KEY veya AuditHost:ApiKey ayarlıysa" />
+      <p class="muted" style="margin:4px 0 0;font-size:12px;">Tarayıcıda oturum boyunca saklanır (sessionStorage). Üretimde API’yi ters proxy ile koruyun.</p>
+      <button id="startBtn" type="button">Denetimi Başlat</button>
       <div id="createResult"></div>
     </section>
 
     <section class="card">
       <h2>Canlı Durum</h2>
       <div id="currentStatus">Yükleniyor...</div>
-      <div class="progressWrap"><div id="auditProgress" class="progressBar"></div></div>
-      <div id="progressText" class="muted" style="margin-top:6px;">Hesaplaniyor...</div>
+      <div id="auditProgressWrap" class="progressWrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-labelledby="progressText progressHint">
+        <div id="auditProgress" class="progressBar"></div>
+      </div>
+      <div id="progressText" class="muted" style="margin-top:6px;">Hesaplanıyor…</div>
+      <p id="progressHint" class="muted" style="margin:4px 0 0;font-size:11px;">Çubuk genişliği özet skora bağlıdır (bulgu cezası + düşük UI otomasyonda tavan); denetimin bittiğini göstermez. Bitti bilgisi süre / durum rozetinde.</p>
+      <details class="muted" style="margin-top:8px;font-size:12px;max-width:52rem;">
+        <summary style="cursor:pointer;">Skorlar nasıl okunur?</summary>
+        <p style="margin:6px 0 0;line-height:1.45;"><strong>Üst çubuk:</strong> özet skorla aynı eksende (düşük skor = dar çubuk); &quot;tarama %X bitti&quot; değildir.<br/>
+        <strong>Özet skoru (%):</strong> bulgu cezası; UI otomasyon oranı %50 altındaysa ek olarak en fazla %55 ile sınırlanır (sinyal susturulmaz).<br/>
+        <strong>UI otomasyon (%):</strong> aday öğelerden kaçının başarıyla denendiği. <strong>Partial</strong> çoğunlukla bu oranın %50 altında olması veya başarısız denemelerdir.</p>
+      </details>
+      <p id="lastPollAt" class="muted" style="margin-top:8px;font-size:12px;">Son yenileme: —</p>
       <div class="stats">
-        <div class="stat"><div class="k">Basari Skoru</div><div class="v" id="scoreStat">%0</div></div>
+        <div class="stat"><div class="k">Özet skoru (bulgular)</div><div class="v" id="scoreStat">%0</div></div>
+        <div class="stat"><div class="k">UI otomasyon</div><div class="v" id="uiCoverStat">—</div></div>
         <div class="stat"><div class="k">Denetim Saati</div><div class="v" id="startedStat">-</div></div>
         <div class="stat"><div class="k">Sure</div><div class="v" id="durationStat">-</div></div>
         <div class="stat"><div class="k">Sayfa / Istek</div><div class="v" id="trafficStat">0 / 0</div></div>
@@ -143,14 +283,46 @@
   </div>
 
   <section class="card" style="margin-top:16px;">
-    <h2>Genel Sonuç (Current)</h2>
-    <pre id="currentSummary">Yükleniyor...</pre>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+      <h2 style="margin:0;" id="summaryPanelTitle">Genel Sonuç <span id="summaryPanelMode" style="font-size:13px;color:#94a3b8;font-weight:400;">(en güncel)</span></h2>
+      <div style="display:flex;gap:8px;align-items:center;margin-left:auto;">
+        <input id="auditIdInput" type="text" placeholder="Audit ID girin…" autocomplete="off"
+          style="width:280px;margin:0;padding:6px 10px;font-size:13px;font-family:monospace;border:1px solid #475569;border-radius:6px;background:#0f172a;color:#e2e8f0;" />
+        <button id="auditIdLoadBtn" type="button"
+          style="width:auto;padding:6px 14px;font-size:13px;white-space:nowrap;">Yükle</button>
+        <button id="auditIdClearBtn" type="button"
+          style="width:auto;padding:6px 12px;font-size:13px;background:#334155;display:none;">✕ Temizle</button>
+      </div>
+    </div>
+    <div id="summaryPanelError" style="display:none;color:#f87171;font-size:13px;margin-bottom:8px;"></div>
+    <div class="summaryResultLayout">
+      <div class="summaryChartCol">
+        <div class="chartWrap">
+          <canvas id="currentSummaryDonut" width="240" height="240" role="img" aria-label="Genel skor grafiği; metin özeti altta"></canvas>
+          <div class="chartCaption">Özet skoru (bulgu cezası)</div>
+        </div>
+        <div class="chartWrap">
+          <canvas id="currentSummaryFindings" width="300" height="132" role="img" aria-label="Bulgu dağılımı grafiği; metin özeti altta"></canvas>
+          <div class="chartCaption">Bulgular (severity)</div>
+        </div>
+      </div>
+      <div class="summaryTextCol" id="currentSummaryReadable">Yükleniyor...</div>
+    </div>
+    <div id="findingsList" style="margin-top:16px;display:none;">
+      <h3 style="margin-bottom:8px;">Bulgular Detayı</h3>
+      <div id="findingsContent"></div>
+    </div>
+    <details class="rawJsonWrap">
+      <summary>Ham JSON (gelişmiş)</summary>
+      <pre id="currentSummaryRaw"></pre>
+    </details>
   </section>
 
   <section class="card" style="margin-top:16px;">
     <h2>Son 5 Denetim</h2>
     <table>
-      <thead><tr><th>ID</th><th>URL</th><th>Durum</th><th>Metrikler</th><th>JSON</th></tr></thead>
+      <caption class="muted" style="caption-side:bottom;text-align:left;padding-top:6px;">Son oluşturulan beş denetim kaydı</caption>
+      <thead><tr><th scope="col">ID</th><th scope="col">URL</th><th scope="col">Durum</th><th scope="col">Metrikler</th><th scope="col">JSON</th></tr></thead>
       <tbody id="recentRows"></tbody>
     </table>
   </section>
@@ -158,25 +330,61 @@
   <section class="card" style="margin-top:16px;">
     <h2>Tüm Denetimler</h2>
     <div class="filterBar" style="margin-bottom:10px;">
-      <input id="urlSearch" class="filterSearch" placeholder="URL veya ID ile ara..." />
+      <input id="urlSearch" class="filterSearch" placeholder="URL veya ID ile ara..." aria-label="Denetim listesinde ara" />
       <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-        <button class="filterBtn success" type="button" data-filter="success">Basarili</button>
-        <button class="filterBtn running" type="button" data-filter="running">DevamEden</button>
-        <button class="filterBtn error" type="button" data-filter="error">Basarisiz</button>
+        <button class="filterBtn success" type="button" data-filter="success">Başarılı</button>
+        <button class="filterBtn running" type="button" data-filter="running">Devam eden</button>
+        <button class="filterBtn error" type="button" data-filter="error">Başarısız</button>
       </div>
     </div>
-    <div class="muted" style="margin-bottom:8px;" id="allCountLabel">Tum denetimler</div>
-    <table>
-      <thead><tr><th>ID</th><th>URL</th><th>Durum</th><th>Metrikler</th><th>JSON</th></tr></thead>
+    <div class="muted" style="margin-bottom:8px;" id="allCountLabel">Tüm denetimler</div>
+    <div class="allAuditsScroll" id="allTableWrap">
+  <table>
+      <caption class="muted" style="caption-side:bottom;text-align:left;padding-top:6px;">Tüm denetimler; silme işlemi geri alınamaz</caption>
+      <thead><tr><th scope="col">ID</th><th scope="col">URL</th><th scope="col">Durum</th><th scope="col">Süre (sn)</th><th scope="col">Metrikler</th><th scope="col">JSON</th><th scope="col">İşlem</th></tr></thead>
       <tbody id="allRows"></tbody>
     </table>
+    </div>
   </section>
 
-  <button id="toTopBtn" class="toTop" type="button" aria-label="Yukari cik" title="Yukari cik">↑</button>
+  <button id="toTopBtn" class="toTop" type="button" aria-label="Yukarı çık" title="Yukarı çık">↑</button>
 
-  <script>
+  <script type="module">
+    import {
+      parseFindings,
+      coverageRatioFromCache,
+      uiAutomationPercent,
+      derivedStatus,
+      scoreFromData,
+      progressBarPercent,
+    } from './js/dashboard-metrics.js';
+
+    function apiHeadersBase(jsonBody) {
+      const h = {};
+      if (jsonBody) h['Content-Type'] = 'application/json';
+      const key = sessionStorage.getItem('auditHostApiKey') || '';
+      if (key) h['X-Api-Key'] = key;
+      return h;
+    }
+
+    function touchLastPoll() {
+      const el = document.getElementById('lastPollAt');
+      if (el) el.textContent = 'Son yenileme: ' + new Date().toLocaleString('tr-TR');
+    }
+
+    /** Versioned API (legacy /api/* mirrors still work on server). */
+    const API_BASE = '/api/v1';
+
     async function getJson(url) {
-      const r = await fetch(url);
+      const r = await fetch(url, { headers: apiHeadersBase(false) });
+      if (r.status === 401) {
+        let msg = 'Yetkisiz (API anahtarı gerekli)';
+        try {
+          const j = await r.json();
+          msg = j.detail || j.title || msg;
+        } catch (_) {}
+        throw new Error(msg);
+      }
       if (!r.ok) throw new Error(await r.text());
       return r.json();
     }
@@ -200,117 +408,394 @@
       return `${m}dk ${s}s`;
     }
 
-    function parseFindings(findingsRaw) {
-      if (!findingsRaw) return {};
-      if (typeof findingsRaw === 'object') return findingsRaw;
+    /** Denetim süresi saniye (bitis veya simdi ile). */
+    function durationSeconds(startedAt, finishedAt) {
+      if (!startedAt) return '-';
+      const end = finishedAt || Math.floor(Date.now() / 1000);
+      const sec = Math.max(0, end - startedAt);
+      return `${sec}s`;
+    }
+
+    function escapeHtml(s) {
+      if (s == null) return '';
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function parseSummaryObject(summary) {
+      if (!summary?.summaryJson) return null;
       try {
-        return JSON.parse(findingsRaw);
+        return typeof summary.summaryJson === 'string' ? JSON.parse(summary.summaryJson) : summary.summaryJson;
       } catch {
-        return {};
+        return null;
       }
     }
 
-    const SUCCESS_RATIO_THRESHOLD = 0.5;
-
-    function coverageRatioFromCache(cache) {
-      const total = Number(cache?.totalElements || 0);
-      const tested = Number(cache?.testedElements || 0);
-      if (!total) return null;
-      return tested / total;
+    function getFindingsCounts(parsed, summary) {
+      const fm = parsed?.metrics?.findingsBySeverity;
+      if (fm && typeof fm === 'object') {
+        return {
+          critical: Number(fm.critical || 0),
+          error: Number(fm.error || 0),
+          warn: Number(fm.warn || 0),
+          info: Number(fm.info || 0),
+        };
+      }
+      const p = parseFindings(summary?.cache?.findingsBySeverity);
+      return {
+        critical: Number(p.critical || 0),
+        error: Number(p.error || 0),
+        warn: Number(p.warn || 0),
+        info: Number(p.info || 0),
+      };
     }
 
-    function derivedStatus(job, cache) {
-      // Running/queued: devam ediyor.
-      if (job.status === 'running' || job.status === 'queued') return 'running';
-      // Runner hata verdi / calisamadi: basarisiz.
-      if (job.status === 'error' || job.status === 'notrun') return 'error';
-
-      // Coverage (element) bilgisi yoksa, job tarafındaki success’i bir "best-effort"
-      // olarak kabul edelim (karsilastirma tutarsizligini azaltir).
-      const total = Number(cache?.totalElements || 0);
-      const tested = Number(cache?.testedElements || 0);
-      const failed = Number(cache?.failedElements || 0);
-      if (!total) return job.status === 'success' ? 'success' : 'error';
-
-      // Total varsa: failed > 0 => basarisiz, yoksa tested/total'e gore karar.
-      if (failed > 0) return 'error';
-      const ratio = tested / total;
-      return ratio >= SUCCESS_RATIO_THRESHOLD ? 'success' : 'error';
+    function drawScoreDonut(canvas, scorePercent) {
+      const ctx = canvas.getContext('2d');
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const css = 240;
+      canvas.width = css * dpr;
+      canvas.height = css * dpr;
+      canvas.style.width = css + 'px';
+      canvas.style.height = css + 'px';
+      ctx.scale(dpr, dpr);
+      const w = css;
+      const h = css;
+      const cx = w / 2;
+      const cy = h / 2;
+      const r = 88;
+      const lw = 20;
+      ctx.clearRect(0, 0, w, h);
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = lw;
+      ctx.stroke();
+      const pct = Math.max(0, Math.min(100, Number(scorePercent) || 0));
+      const grad = ctx.createLinearGradient(0, 0, w, h);
+      if (pct >= 70) {
+        grad.addColorStop(0, '#4ade80');
+        grad.addColorStop(1, '#15803d');
+      } else if (pct >= 40) {
+        grad.addColorStop(0, '#fbbf24');
+        grad.addColorStop(1, '#d97706');
+      } else {
+        grad.addColorStop(0, '#fb923c');
+        grad.addColorStop(1, '#dc2626');
+      }
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * pct) / 100);
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = lw;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+      ctx.fillStyle = '#f1f5f9';
+      ctx.font = 'bold 32px system-ui, Segoe UI, Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(pct + '%', cx, cy - 6);
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '12px system-ui, Segoe UI, Arial, sans-serif';
+      ctx.fillText('özet', cx, cy + 22);
     }
 
-    function scoreFromData(job, summary) {
-      const findings = parseFindings(summary?.cache?.findingsBySeverity);
-      const err = Number(findings.error || 0);
-      const critical = Number(findings.critical || 0);
-      const warn = Number(findings.warn || 0);
-      const info = Number(findings.info || 0);
-      let score = 100 - (critical * 20 + err * 12 + warn * 6 + info * 1);
-      if (job.status === 'running' || job.status === 'queued') score = Math.min(score, 70);
-      if (job.status === 'error' || job.status === 'notrun') score = Math.min(score, 35);
-
-      // Düşük coverage varsa skoru da kır.
-      const ratio = coverageRatioFromCache(summary?.cache || {});
-      if (ratio != null && ratio < SUCCESS_RATIO_THRESHOLD) score = Math.min(score, 55);
-
-      return Math.max(0, Math.min(100, Math.round(score)));
+    function drawFindingsBars(canvas, counts) {
+      const c = counts || {};
+      const crit = Number(c.critical || 0);
+      const err = Number(c.error || 0);
+      const warn = Number(c.warn || 0);
+      const info = Number(c.info || 0);
+      const max = Math.max(1, crit, err, warn, info);
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const W = 300;
+      const H = 132;
+      canvas.width = W * dpr;
+      canvas.height = H * dpr;
+      canvas.style.width = W + 'px';
+      canvas.style.height = H + 'px';
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, W, H);
+      const rows = [
+        ['critical', crit, '#be123c'],
+        ['error', err, '#ef4444'],
+        ['warn', warn, '#f59e0b'],
+        ['info', info, '#3b82f6'],
+      ];
+      const labelW = 54;
+      const barW = W - labelW - 30;
+      let y = 6;
+      const bh = 18;
+      const gap = 8;
+      for (const [label, val, color] of rows) {
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(labelW, y, barW, bh);
+        const frac = val / max;
+        ctx.fillStyle = color;
+        ctx.fillRect(labelW, y, Math.max(0, barW * frac), bh);
+        ctx.fillStyle = '#cbd5e1';
+        ctx.font = '11px system-ui, Segoe UI, Arial, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(label, 4, y + 13);
+        ctx.fillStyle = '#94a3b8';
+        ctx.textAlign = 'right';
+        ctx.fillText(String(val), W - 4, y + 13);
+        y += bh + gap;
+      }
     }
 
-    function progressFromStatus(status, score) {
-      if (status === 'success') return score;
-      if (status === 'running') return 45;
-      if (status === 'queued') return 15;
-      if (status === 'error' || status === 'notrun') return 100;
-      return 0;
+    function renderCurrentSummaryReadable(job, summary, parsed, score, cat) {
+      const run = parsed?.run || {};
+      const cfg = parsed?.config || {};
+      const metrics = parsed?.metrics || {};
+      const ui = parsed?.uiCoverage || {};
+      const cache = summary?.cache || {};
+      const url = run.url || job?.targetUrl || '-';
+      const runId = run.runId || job?.id || '-';
+      const runStatus = run.status || '-';
+      const jobStatus = job?.status || '-';
+      const safeMode = cfg.safeMode !== undefined ? String(cfg.safeMode) : '-';
+      const browser = cfg.browser || '-';
+      const headless = cfg.headless !== undefined ? String(cfg.headless) : '-';
+      const maxLinks = cfg.maxLinks ?? cfg.linkLimit ?? '-';
+      const duMs = metrics.durationMs;
+      const totalEl = ui.totalElements != null ? ui.totalElements : cache.totalElements;
+      const testedEl = ui.testedElements != null ? ui.testedElements : cache.testedElements;
+      const failedEl = ui.failedElements != null ? ui.failedElements : cache.failedElements;
+      const pages = metrics.pagesScanned != null ? metrics.pagesScanned : cache.pagesScanned;
+      const req = metrics.requestsTotal != null ? metrics.requestsTotal : cache.requestsTotal;
+      const invErr = parsed?.uiCoverage?.inventoryError;
+
+      let h = '<h3>Özet</h3>';
+      h += `<div class="kv"><span class="k">Durum</span><span class="v">${statusBadge(cat)}</span></div>`;
+      h += `<div class="kv"><span class="k">Özet skoru</span><span class="v">%${score} <span class="muted">(bulgu cezası; site yüzdesi değil)</span></span></div>`;
+      h += `<div class="kv"><span class="k">Hedef URL</span><span class="v">${escapeHtml(url)}</span></div>`;
+      h += `<div class="kv"><span class="k">Run ID</span><span class="v">${escapeHtml(runId)}</span></div>`;
+      h += `<div class="kv"><span class="k">Rapor (summary)</span><span class="v">${escapeHtml(runStatus)}</span></div>`;
+      h += `<div class="kv"><span class="k">Host job</span><span class="v">${escapeHtml(jobStatus)}</span></div>`;
+      h += `<div class="kv"><span class="k">Oturum</span><span class="v">${escapeHtml(headless)} headless · ${escapeHtml(String(browser))} · safeMode ${escapeHtml(safeMode)}</span></div>`;
+      h += `<div class="kv"><span class="k">Limit</span><span class="v">maxLinks: ${escapeHtml(String(maxLinks))}</span></div>`;
+      if (duMs != null && duMs !== '') h += `<div class="kv"><span class="k">Runner süresi (rapor)</span><span class="v">${escapeHtml(String(duMs))} ms</span></div>`;
+      if (totalEl != null && totalEl !== '') {
+        const tr = testedEl != null ? testedEl : '?';
+        const fe = failedEl != null ? failedEl : '?';
+        const pct = totalEl > 0 ? Math.round((Number(testedEl || 0) / totalEl) * 100) : 0;
+        h += `<div class="kv"><span class="k">UI otomasyon</span><span class="v">%${pct} <span class="muted">(${tr}/${totalEl} aday · başarısız: ${fe})</span></span></div>`;
+      }
+      if (pages != null || req != null) {
+        h += `<div class="kv"><span class="k">Trafik</span><span class="v">${pages ?? '-'} sayfa · ${req ?? '-'} istek (özet)</span></div>`;
+      }
+      if (invErr) h += `<div class="kv"><span class="k">UI fazı</span><span class="v">${escapeHtml(invErr)}</span></div>`;
+      return h;
+    }
+
+    const SEV_ORDER = ['critical', 'error', 'warn', 'info'];
+
+    function renderFindingsPanel(parsed) {
+      const panel = document.getElementById('findingsList');
+      const content = document.getElementById('findingsContent');
+      if (!parsed) { if (panel) panel.style.display = 'none'; return; }
+      const findings = parsed.findings || [];
+      if (findings.length === 0) { if (panel) panel.style.display = 'none'; return; }
+
+      // Group by severity
+      const groups = {};
+      for (const sev of SEV_ORDER) groups[sev] = [];
+      for (const f of findings) {
+        const s = (f.severity || 'info').toLowerCase();
+        if (!groups[s]) groups[s] = [];
+        groups[s].push(f);
+      }
+
+      const sevLabel = { critical: '🔴 KRİTİK', error: '🟠 HATA', warn: '⚠️ UYARI', info: 'ℹ️ BİLGİ' };
+
+      let html = '';
+      for (const sev of SEV_ORDER) {
+        const list = groups[sev] || [];
+        if (list.length === 0) continue;
+        html += `<div class="findings-group"><h4>${sevLabel[sev] || sev} (${list.length})</h4>`;
+        for (const f of list) {
+          const ruleId = escapeHtml(f.ruleId || '');
+          const title = escapeHtml(f.title || '(başlık yok)');
+          const detail = escapeHtml(f.detail || '');
+          const remed = escapeHtml(f.remediation || '');
+          const conf = f.confidence != null ? `güven=${Math.round(f.confidence * 100)}%` : '';
+          const evidence = Array.isArray(f.evidence) && f.evidence.length > 0
+            ? f.evidence.slice(0, 5).map(e => `<li>${escapeHtml(String(e).slice(0, 120))}</li>`).join('')
+            : '';
+
+          html += `<div class="finding-card sev-${escapeHtml(sev)}">
+            <div class="fc-meta">
+              <span class="sev-badge ${escapeHtml(sev)}">${escapeHtml(sev.toUpperCase())}</span>
+              <code>${ruleId}</code> ${conf ? `· <span>${conf}</span>` : ''}
+            </div>
+            <div class="fc-title">${title}</div>
+            ${detail ? `<div class="fc-detail">${detail}</div>` : ''}
+            ${remed ? `<div class="fc-remed">✅ Çözüm: ${remed}</div>` : ''}
+            ${evidence ? `<details><summary>Kanıtlar (${f.evidence.length})</summary><ul style="margin:4px 0;padding-left:18px;font-size:12px;color:#94a3b8;">${evidence}</ul></details>` : ''}
+          </div>`;
+        }
+        html += '</div>';
+      }
+
+      if (panel) panel.style.display = html ? 'block' : 'none';
+      if (content) content.innerHTML = html;
+    }
+
+    // ── Pinned audit ID state ──────────────────────────────────────────────
+    let pinnedAuditId = null; // null = en güncel audit; string = manuel seçilen ID
+
+    function setPinnedMode(id) {
+      pinnedAuditId = id || null;
+      const modeEl = document.getElementById('summaryPanelMode');
+      const clearBtn = document.getElementById('auditIdClearBtn');
+      const errEl = document.getElementById('summaryPanelError');
+      if (errEl) errEl.style.display = 'none';
+      if (pinnedAuditId) {
+        if (modeEl) modeEl.textContent = `(ID: ${pinnedAuditId.slice(0, 16)}…)`;
+        if (clearBtn) clearBtn.style.display = '';
+      } else {
+        if (modeEl) modeEl.textContent = '(en güncel)';
+        if (clearBtn) clearBtn.style.display = 'none';
+        const inp = document.getElementById('auditIdInput');
+        if (inp) inp.value = '';
+      }
+    }
+
+    /** Genel Sonuç panelini (grafikler + metin + bulgular) doldurur. */
+    function fillSummaryPanel(summary) {
+      const job = summary.job || {};
+      const cat = derivedStatus(job, summary.cache || {});
+      const score = scoreFromData(job, summary);
+      const parsed = parseSummaryObject(summary);
+      const counts = getFindingsCounts(parsed, summary);
+
+      document.getElementById('currentSummaryReadable').innerHTML =
+        renderCurrentSummaryReadable(job, summary, parsed, score, cat);
+      renderFindingsPanel(parsed);
+
+      const donut = document.getElementById('currentSummaryDonut');
+      const bars  = document.getElementById('currentSummaryFindings');
+      if (donut) drawScoreDonut(donut, score);
+      if (bars)  drawFindingsBars(bars, counts);
+
+      const raw = summary.summaryJson ||
+        JSON.stringify({ job: summary.job, cache: summary.cache }, null, 2);
+      document.getElementById('currentSummaryRaw').textContent =
+        typeof raw === 'string' ? raw : JSON.stringify(raw, null, 2);
+    }
+
+    /** ID ile özet yükler (Yükle butonu). */
+    async function loadSummaryById(id) {
+      const errEl = document.getElementById('summaryPanelError');
+      if (!id || !id.trim()) {
+        if (errEl) { errEl.textContent = 'Lütfen geçerli bir audit ID girin.'; errEl.style.display = 'block'; }
+        return;
+      }
+      id = id.trim();
+      if (errEl) errEl.style.display = 'none';
+      document.getElementById('currentSummaryReadable').innerHTML = '<p class="muted">Yükleniyor…</p>';
+
+      const summary = await getJson(`${API_BASE}/audits/${id}/summary`).catch(() => null);
+      if (!summary || summary.error || !summary.job) {
+        if (errEl) {
+          errEl.textContent = summary?.error
+            ? `Hata: ${summary.error}`
+            : `ID bulunamadı: ${id}`;
+          errEl.style.display = 'block';
+        }
+        document.getElementById('currentSummaryReadable').innerHTML = '<p class="muted">Audit bulunamadı.</p>';
+        return;
+      }
+      setPinnedMode(id);
+      fillSummaryPanel(summary);
     }
 
     async function refreshCurrent() {
-      const current = await getJson('/api/audits/current');
-      if (!current.id) {
+      const wrap = document.getElementById('auditProgressWrap');
+
+      // ── ÜST BLOK: her zaman en güncel audit ──────────────────────────────
+      const data = await getJson(API_BASE + '/audits/current');
+      const current = data && data.current !== undefined ? data.current : data;
+      if (!current || !current.id) {
         document.getElementById('currentStatus').innerHTML = 'Henüz audit yok.';
-        document.getElementById('currentSummary').textContent = 'Henüz audit yok.';
         document.getElementById('scoreStat').textContent = '%0';
+        const uic = document.getElementById('uiCoverStat');
+        if (uic) uic.textContent = '—';
         document.getElementById('startedStat').textContent = '-';
         document.getElementById('durationStat').textContent = '-';
         document.getElementById('trafficStat').textContent = '0 / 0';
         document.getElementById('auditProgress').style.width = '0%';
         document.getElementById('progressText').textContent = 'Beklemede';
+        if (wrap) { wrap.setAttribute('aria-valuenow', '0'); }
+        // Alt panel zaten pinli değilse boşalt
+        if (!pinnedAuditId) {
+          document.getElementById('currentSummaryReadable').innerHTML = '<p class="muted">Henüz audit yok.</p>';
+          document.getElementById('currentSummaryRaw').textContent = '';
+          const d = document.getElementById('currentSummaryDonut');
+          const f = document.getElementById('currentSummaryFindings');
+          if (d) d.getContext('2d').clearRect(0, 0, d.width, d.height);
+          if (f) f.getContext('2d').clearRect(0, 0, f.width, f.height);
+          renderFindingsPanel(null);
+        }
+        touchLastPoll();
         return;
       }
 
-      const summary = await getJson(`/api/audits/${current.id}/summary`);
-      const score = scoreFromData(current, summary);
-      const progress = progressFromStatus(current.status, score);
-      const pages = Number(summary?.cache?.pagesScanned || 0);
-      const req = Number(summary?.cache?.requestsTotal || 0);
+      const latestSummary = await getJson(`${API_BASE}/audits/${current.id}/summary`);
+      const latestJob = latestSummary.job || current;
+      const latestCat = derivedStatus(latestJob, latestSummary.cache || {});
+      const latestScore = scoreFromData(latestJob, latestSummary);
+      const latestProgress = progressBarPercent(latestJob, latestCat, latestScore);
+      const latestPages = Number(latestSummary?.cache?.pagesScanned || 0);
+      const latestReq   = Number(latestSummary?.cache?.requestsTotal || 0);
+      const latestUiP   = uiAutomationPercent(latestSummary.cache || {});
 
       document.getElementById('currentStatus').innerHTML =
-        `ID: <b>${current.id}</b><br/>URL: ${current.targetUrl}<br/>Durum: ${statusBadge(current.status)}`;
-      document.getElementById('scoreStat').textContent = `%${score}`;
+        `ID: <b>${escapeHtml(current.id)}</b><br/>URL: ${escapeHtml(current.targetUrl)}<br/>Durum: ${statusBadge(latestCat)} <span class="muted">(job: ${escapeHtml(latestJob.status)})</span>`;
+      document.getElementById('scoreStat').textContent = `%${latestScore}`;
+      const uicEl = document.getElementById('uiCoverStat');
+      if (uicEl) uicEl.textContent = latestUiP == null ? '—' : `%${latestUiP}`;
       document.getElementById('startedStat').textContent = formatTs(current.startedAt || current.createdAt);
       document.getElementById('durationStat').textContent = formatDuration(current.startedAt || current.createdAt, current.finishedAt);
-      document.getElementById('trafficStat').textContent = `${pages} / ${req}`;
-      document.getElementById('auditProgress').style.width = `${progress}%`;
-      document.getElementById('progressText').textContent = `Denetim ilerleme / kalite: %${progress}`;
-      document.getElementById('currentSummary').textContent = summary.summaryJson || JSON.stringify(summary.cache, null, 2);
+      document.getElementById('trafficStat').textContent = `${latestPages} / ${latestReq}`;
+      document.getElementById('auditProgress').style.width = `${latestProgress}%`;
+      document.getElementById('progressText').textContent =
+        `İlerleme göstergesi: %${latestProgress} · Özet skoru: %${latestScore}${latestUiP != null ? ` · UI otomasyon: %${latestUiP}` : ''}`;
+      if (wrap) wrap.setAttribute('aria-valuenow', String(Math.min(100, Math.max(0, latestProgress))));
+      touchLastPoll();
+
+      // ── ALT BLOK: pinli ID varsa onu göster, yoksa en günceli ─────────────
+      if (!pinnedAuditId) {
+        fillSummaryPanel(latestSummary);
+      }
+      // pinli ID varsa poll sırasında alt panele dokunmuyoruz (kullanıcı seçimini koruruz)
     }
 
     async function refreshRecent() {
-      const list = await getJson('/api/audits/recent?limit=5');
+      const list = await getJson(API_BASE + '/audits/recent?limit=5');
       const rows = list.map(x => {
         const j = x.job;
         const metrics = x.summary || {};
         const cat = derivedStatus(j, metrics);
         const files = ['summary','gaps','ui-inventory','console','network','request_failed','run.complete']
-          .map(f => `<a href="/api/audits/${j.id}/json/${f}" target="_blank">${f}</a>`).join(' | ');
+          .map(f => `<a href="${API_BASE}/audits/${j.id}/json/${f}" target="_blank">${f}</a>`).join(' | ');
+        const durRecent = durationSeconds(j.startedAt || j.createdAt, j.finishedAt);
+        const sfind = scoreFromData(j, { cache: metrics });
+        const uiP = metrics.totalElements ? Math.round((metrics.testedElements / metrics.totalElements) * 100) : null;
         return `<tr>
-          <td>${j.id}</td>
-          <td>${j.targetUrl}</td>
+          <td><span class="idCell" data-load-id="${escapeHtml(j.id)}" title="Genel Sonuç panelinde görüntüle" style="cursor:pointer;color:#93c5fd;font-family:monospace;font-size:12px;">${escapeHtml(j.id.slice(0,12))}…</span></td>
+          <td>${escapeHtml(j.targetUrl)}</td>
           <td>${statusBadge(cat)}<br/><span class="muted">${formatTs(j.startedAt || j.createdAt)}</span></td>
-          <td>score=%${scoreFromData(j, { cache: metrics })}, ui=${(metrics.totalElements ? `${metrics.testedElements}/${metrics.totalElements} (${Math.round((metrics.testedElements/metrics.totalElements)*100)}%)` : '-')}, pages=${metrics.pagesScanned || 0}, req=${metrics.requestsTotal || 0}, skipped=${metrics.skippedNetwork || 0}</td>
+          <td>bulgu=%${sfind}${uiP != null ? ` · ui=%${uiP}` : ''}, ${(metrics.totalElements ? `${metrics.testedElements}/${metrics.totalElements} aday` : 'ui=-')}, pages=${metrics.pagesScanned || 0}, req=${metrics.requestsTotal || 0}, skipped=${metrics.skippedNetwork || 0}, <b>dur=${durRecent}</b></td>
           <td>${files}</td>
         </tr>`;
       }).join('');
       document.getElementById('recentRows').innerHTML = rows || '<tr><td colspan="5">Kayıt yok</td></tr>';
+      touchLastPoll();
     }
 
     let allCache = [];
@@ -328,7 +813,7 @@
 
         if (statusFilter === 'all') return true;
         const cat = derivedStatus(x.job, x.cache || {});
-        if (statusFilter === 'success') return cat === 'success';
+        if (statusFilter === 'success') return cat === 'success' || cat === 'partial';
         if (statusFilter === 'running') return cat === 'running';
         if (statusFilter === 'error') return cat === 'error';
         return true;
@@ -341,26 +826,30 @@
         const c = x.cache || {};
         const cat = derivedStatus(j, c);
         const files = ['summary','gaps','ui-inventory','console','network','request_failed','run.complete']
-          .map(f => `<a href="/api/audits/${j.id}/json/${f}" target="_blank">${f}</a>`).join(' | ');
+          .map(f => `<a href="${API_BASE}/audits/${j.id}/json/${f}" target="_blank">${f}</a>`).join(' | ');
         const total = Number(c.totalElements || 0);
         const tested = Number(c.testedElements || 0);
         const ratio = total ? (tested / total) : null;
         const uiStr = ratio == null ? '-' : `${tested}/${total} (${Math.round(ratio * 100)}%)`;
+        const dur = durationSeconds(j.startedAt || j.createdAt, j.finishedAt);
+        const uiPct = ratio != null ? Math.round(ratio * 100) : null;
         return `<tr>
-          <td>${j.id}</td>
-          <td>${j.targetUrl}</td>
+          <td><span class="idCell" data-load-id="${escapeHtml(j.id)}" title="Genel Sonuç panelinde görüntüle" style="cursor:pointer;color:#93c5fd;font-family:monospace;font-size:12px;">${escapeHtml(j.id.slice(0,12))}…</span></td>
+          <td>${escapeHtml(j.targetUrl)}</td>
           <td>${statusBadge(cat)}</td>
-          <td>score=%${x.score}, ui=${uiStr}, pages=${c.pagesScanned || 0}, req=${c.requestsTotal || 0}, skipped=${c.skippedNetwork || 0}</td>
+          <td><b>${dur}</b></td>
+          <td>bulgu=%${x.score}${uiPct != null ? ` · ui=%${uiPct}` : ''}, ${uiStr}, pages=${c.pagesScanned || 0}, req=${c.requestsTotal || 0}, skipped=${c.skippedNetwork || 0}</td>
           <td>${files}</td>
+          <td><button type="button" class="btnDel" data-id="${escapeHtml(j.id)}">Sil</button></td>
         </tr>`;
       }).join('');
 
       document.getElementById('allRows').innerHTML =
-        rows || '<tr><td colspan="5">Kayit yok</td></tr>';
+        rows || '<tr><td colspan="7">Kayıt yok</td></tr>';
     }
 
     async function refreshAll() {
-      const all = await getJson('/api/audits?limit=500');
+      const all = await getJson(API_BASE + '/audits?limit=500');
       allCache = all.map((x) => {
         const job = x.job ?? x;
         const cache = x.cache ?? {};
@@ -377,6 +866,36 @@
       await refreshAll();
     }
 
+    // ── Audit ID yükle / temizle butonları ────────────────────────────────
+    document.getElementById('auditIdLoadBtn').onclick = async () => {
+      const id = (document.getElementById('auditIdInput').value || '').trim();
+      await loadSummaryById(id);
+    };
+
+    document.getElementById('auditIdClearBtn').onclick = () => {
+      setPinnedMode(null);
+      refreshCurrent().catch(console.error);
+    };
+
+    document.getElementById('auditIdInput').addEventListener('keydown', async (e) => {
+      if (e.key === 'Enter') {
+        const id = (document.getElementById('auditIdInput').value || '').trim();
+        await loadSummaryById(id);
+      }
+    });
+
+    // Recent/All tablolarındaki ID'lere tıklanınca otomatik yükleme
+    document.addEventListener('click', (e) => {
+      const el = e.target.closest('[data-load-id]');
+      if (!el) return;
+      const id = el.dataset.loadId;
+      if (!id) return;
+      document.getElementById('auditIdInput').value = id;
+      loadSummaryById(id).then(() => {
+        document.getElementById('currentSummaryReadable').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+
     document.getElementById('startBtn').onclick = async () => {
       const payload = {
         targetUrl: document.getElementById('targetUrl').value.trim(),
@@ -384,16 +903,17 @@
         identifier: document.getElementById('identifier').value.trim(),
         password: document.getElementById('password').value.trim(),
         maxLinks: Number(document.getElementById('maxLinks').value),
-        maxUiAttempts: Number(document.getElementById('maxUiAttempts').value)
+        maxUiAttempts: Number(document.getElementById('maxUiAttempts').value),
+        externalTicketId: document.getElementById('externalTicket').value.trim() || undefined
       };
       try {
-        const res = await fetch('/api/audits', {
+        const res = await fetch(API_BASE + '/audits', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: apiHeadersBase(true),
           body: JSON.stringify(payload)
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Audit baslatilamadi');
+        if (!res.ok) throw new Error(data.error || data.detail || 'Audit başlatılamadı');
         document.getElementById('createResult').textContent = `Baslatildi: ${data.id}`;
         await refreshCurrent();
         await refreshRecent();
@@ -408,6 +928,15 @@
       if (window.scrollY > 250) toTopBtn.classList.add('show');
       else toTopBtn.classList.remove('show');
     });
+
+    (function initApiKeyField() {
+      const inp = document.getElementById('apiKeyInput');
+      if (!inp) return;
+      inp.value = sessionStorage.getItem('auditHostApiKey') || '';
+      inp.addEventListener('change', () => {
+        sessionStorage.setItem('auditHostApiKey', inp.value.trim());
+      });
+    })();
 
     refreshCurrent().catch(console.error);
     refreshRecent().catch(console.error);
@@ -425,6 +954,32 @@
       });
     });
     document.getElementById('urlSearch').addEventListener('input', () => renderAll());
+
+    document.getElementById('allTableWrap').addEventListener('click', async (e) => {
+      const btn = e.target.closest('.btnDel');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      if (!id) return;
+      if (!confirm('Bu denetimi kalici olarak silmek istiyor musunuz? (veritabani kaydi + runner/reports/runs altindaki dosyalar)')) return;
+      try {
+        // POST: DELETE bazi ortamlarda 404 donebiliyor; sunucuda her iki yontem de var.
+        const r = await fetch(API_BASE + '/audits/' + encodeURIComponent(id) + '/delete', { method: 'POST', headers: apiHeadersBase(false) });
+        const text = await r.text();
+        let data = {};
+        try { data = JSON.parse(text); } catch { data = { error: text }; }
+        if (!r.ok) throw new Error(data.error || data.detail || text || r.statusText);
+        if (r.status === 207) {
+          const w = data.detail || data.title;
+          if (w) alert('Uyarı: ' + w);
+        }
+        allLastFetchAt = 0;
+        await refreshAll();
+        await refreshRecent();
+        await refreshCurrent();
+      } catch (err) {
+        alert('Silinemedi: ' + (err && err.message ? err.message : err));
+      }
+    });
 
     refreshAllThrottled().catch(console.error);
     setInterval(() => {

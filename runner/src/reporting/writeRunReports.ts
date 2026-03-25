@@ -6,6 +6,7 @@ import type { UiGap } from "../domain/uiInventory";
 import type { ConsoleIssue } from "../core/collectConsoleIssues";
 import type { NetworkIssue } from "../core/collectNetworkIssues";
 import { hashFileSha256 } from "../core/hashFileSha256";
+import { sanitizeValue } from "../core/sanitize";
 
 export type WriteRunReportsInput = {
   runDir: string;
@@ -17,27 +18,6 @@ export type WriteRunReportsInput = {
   networkIssues: NetworkIssue[];
 };
 
-const SENSITIVE_KEYS = ["password", "passwd", "token", "authorization", "cookie", "set-cookie"];
-
-function sanitizeValue(value: unknown): unknown {
-  if (value === null || value === undefined) return value;
-  if (Array.isArray(value)) {
-    return value.map((v) => sanitizeValue(v));
-  }
-  if (typeof value === "object") {
-    const obj = value as Record<string, unknown>;
-    const result: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(obj)) {
-      if (SENSITIVE_KEYS.includes(k.toLowerCase())) {
-        result[k] = "[REDACTED]";
-      } else {
-        result[k] = sanitizeValue(v);
-      }
-    }
-    return result;
-  }
-  return value;
-}
 
 function artifactsDir(runDir: string): string {
   const d = path.join(runDir, "artifacts");

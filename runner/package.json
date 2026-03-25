@@ -5,12 +5,14 @@
   "type": "commonjs",
   "scripts": {
     "build": "node ./node_modules/typescript/bin/tsc -p tsconfig.json",
-    "test": "npm run build && node ./node_modules/@playwright/test/cli.js test src/tests",
+    "build:lib": "node ./node_modules/typescript/bin/tsc -p tsconfig.lib.json",
+    "test": "npm run build && AUDIT_ALLOW_PRIVATE_TARGETS=true node ./node_modules/@playwright/test/cli.js test src/tests",
     "audit": "npm run build && node dist/cli.js",
     "lint": "node ./node_modules/eslint/bin/eslint.js .",
     "format": "prettier -w ."
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.10.1",
     "@playwright/test": "1.58.2",
     "@types/node": "^25.3.0",
     "@types/uuid": "^10.0.0",

@@ -95,7 +95,8 @@ function evidenceFromVisibility(v: VisibilityResult): ElementEvidence {
   };
 }
 
-const CLICKABLE_SELECTOR = "a[href], button, input[type=button], input[type=submit], [role=button], [role=link]";
+const CLICKABLE_SELECTOR =
+  "a[href], button, input[type=button], input[type=submit], input[type=checkbox], summary, [role=button], [role=link], [role=switch]";
 
 /**
  * Resolve clickable ancestor via DOM closest() from the matched node (e.g. zero-rect text child).
@@ -310,13 +311,21 @@ export async function buildLocator(page: Page, element: UiElement): Promise<Loca
     const classified = await classifyMatches(page, baseLocator, 5);
     const pick = pickByVisibilityPriority(classified);
     if (pick.reasonCode === "SELECTOR_AMBIGUOUS") {
+      const visibleMatches = classified.filter((c) => c.classification === "VISIBLE_IN_VIEWPORT");
+      // Ambiguous selector için skip etmek yerine her durumda bir temsilci eleman dene.
+      // Görünür eşleşme varsa onu, yoksa ilk eşleşmeyi seç.
+      const chosen = visibleMatches.length > 0 ? visibleMatches[0].index : 0;
       return {
-        locator: baseLocator.first(),
+        locator: baseLocator.nth(chosen),
         strategyUsed,
         matchedCount: count,
-        visibleCount: classified.filter((c) => c.classification === "VISIBLE_IN_VIEWPORT").length,
-        reasonCode: "SELECTOR_AMBIGUOUS",
-        evidence: { selectorStrategy: strategyUsed, matchedCount: count },
+        visibleCount: visibleMatches.length,
+        evidence: {
+          selectorStrategy: strategyUsed,
+          matchedCount: count,
+          ambiguityResolvedByRepresentativePick: true,
+          chosenIndex: chosen,
+        },
       };
     }
     if (pick.reasonCode === "ZERO_RECT_MATCH" && (strategyUsed.startsWith("text:") || strategyUsed.startsWith("role:"))) {
@@ -379,12 +388,22 @@ export async function buildLocator(page: Page, element: UiElement): Promise<Loca
       };
     }
     if (count > 1) {
+      // Tag-only fallback matches many elements — pick the first visible one instead of aborting.
+      // This makes elements without stable selectors still attempt-able (with low confidence).
+      const classified = await classifyMatches(page, fallback, 5);
+      const visibles = classified.filter((c) => c.classification === "VISIBLE_IN_VIEWPORT");
+      const chosenIdx = visibles.length > 0 ? visibles[0].index : 0;
       return {
-        locator: fallback.first(),
+        locator: fallback.nth(chosenIdx),
         strategyUsed: `css:${element.tagName}`,
         matchedCount: count,
-        reasonCode: "SELECTOR_AMBIGUOUS",
-        evidence: { selectorStrategy: `css:${element.tagName}`, matchedCount: count },
+        // No reasonCode = will be attempted; confidence flagged via evidence.
+        evidence: {
+          selectorStrategy: `css:${element.tagName}`,
+          matchedCount: count,
+          ambiguityResolvedByRepresentativePick: true,
+          chosenIndex: chosenIdx,
+        },
       };
     }
     if (isGenericCssSelector(element.tagName)) {
@@ -442,12 +461,12 @@ export async function safeFill(
 ): Promise<AttemptResult> {
   const startedAt = new Date().toISOString();
   const value = options.value ?? SMOKE_FILL_VALUE;
-  const timeout = options.timeout ?? 8_000;
+  const timeout = options.timeout ?? 3_500;
 
   let vis = await classifyVisibility(locator, page);
   if (vis.classification === "OUT_OF_VIEWPORT_SCROLL_REQUIRED") {
     await scrollIntoViewIfNeeded(locator);
-    await page.waitForTimeout(250);
+    await locator.waitFor({ state: 'visible', timeout: 1500 }).catch(() => {});
     vis = await classifyVisibility(locator, page);
   }
   if (vis.classification !== "VISIBLE_IN_VIEWPORT") {
@@ -496,6 +515,86 @@ export async function safeFill(
   }
 }
 
+/**
+ * Pick first non-placeholder <option> and select it (safe smoke for <select>).
+ */
+export async function safeSelectMeaningful(
+  page: Page,
+  locator: Locator,
+  options: { timeout?: number }
+): Promise<AttemptResult> {
+  const startedAt = new Date().toISOString();
+  const timeout = options.timeout ?? 3_500;
+
+  let vis = await classifyVisibility(locator, page);
+  if (vis.classification === "OUT_OF_VIEWPORT_SCROLL_REQUIRED") {
+    await scrollIntoViewIfNeeded(locator);
+    await locator.waitFor({ state: 'visible', timeout: 1500 }).catch(() => {});
+    vis = await classifyVisibility(locator, page);
+  }
+  if (vis.classification !== "VISIBLE_IN_VIEWPORT") {
+    return {
+      action: "select",
+      status: "skipped",
+      error: vis.reasonCode ?? "NOT_VISIBLE",
+      startedAt,
+      endedAt: new Date().toISOString(),
+      meta: { reasonCode: vis.reasonCode, evidence: vis.evidence },
+    };
+  }
+
+  try {
+    const idx = await locator
+      .evaluate((el: unknown) => {
+        const sel = el as HTMLSelectElement;
+        if (!sel.options || sel.options.length === 0) return -1;
+        for (let i = 1; i < sel.options.length; i++) {
+          const o = sel.options[i];
+          if (o.value && o.value.trim() && !o.disabled) return i;
+        }
+        for (let i = 0; i < sel.options.length; i++) {
+          const o = sel.options[i];
+          if (o.value && o.value.trim() && !o.disabled) return i;
+        }
+        return sel.options.length > 0 ? 0 : -1;
+      })
+      .catch(() => -1);
+    if (idx < 0) {
+      return {
+        action: "select",
+        status: "skipped",
+        error: "No selectable options",
+        startedAt,
+        endedAt: new Date().toISOString(),
+        meta: { reasonCode: "UNKNOWN" as const },
+      };
+    }
+    const before = await locator.inputValue().catch(() => "");
+    await locator.selectOption({ index: idx }, { timeout });
+    const after = await locator.inputValue().catch(() => "");
+    const success = after !== before || before === "";
+    return {
+      action: "select",
+      status: success ? "success" : "failed",
+      error: success ? undefined : "selectOption did not change value",
+      startedAt,
+      endedAt: new Date().toISOString(),
+      meta: { meaningfulInteraction: success, reason: "select_changed", optionIndex: idx },
+    };
+  } catch (e: unknown) {
+    const err = e instanceof Error ? e.message : String(e);
+    const reasonCode = exceptionToReasonCode(err);
+    return {
+      action: "select",
+      status: "failed",
+      error: err,
+      startedAt,
+      endedAt: new Date().toISOString(),
+      meta: { reasonCode },
+    };
+  }
+}
+
 export type WaitStrategy = "domcontentloaded" | "networkidle";
 
 /**
@@ -513,14 +612,14 @@ export async function safeClick(
   }
 ): Promise<AttemptResult> {
   const startedAt = new Date().toISOString();
-  const timeout = options.timeout ?? 8_000;
+  const timeout = options.timeout ?? 3_500;
   const waitStrategy = options.waitStrategy ?? "domcontentloaded";
   const networkIdleTimeout = options.networkIdleTimeout ?? 2_000;
 
   let vis = await classifyVisibility(locator, page);
   if (vis.classification === "OUT_OF_VIEWPORT_SCROLL_REQUIRED") {
     await scrollIntoViewIfNeeded(locator);
-    await page.waitForTimeout(250);
+    await locator.waitFor({ state: 'visible', timeout: 1500 }).catch(() => {});
     vis = await classifyVisibility(locator, page);
   }
   if (vis.classification !== "VISIBLE_IN_VIEWPORT") {
@@ -562,6 +661,17 @@ export async function safeClick(
       } catch (retryErr: unknown) {
         const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
         if (isIntercepted(retryMsg)) {
+          // Son çare: force click ile overlay katmanını bypass etmeyi dene.
+          // Bu sadece "safeClick" akışındaki güvenli elementler için çalışır.
+          try {
+            await locator.click({ timeout: 2000, force: true, noWaitAfter: false });
+            await page.waitForLoadState('domcontentloaded', { timeout: 1500 }).catch(() => {});
+            trialIntercepted = false;
+          } catch {
+            // force de başarısızsa mevcut davranışla fail döndür.
+          }
+        }
+        if (isIntercepted(retryMsg) && trialIntercepted) {
           const { overlayCount } = await detectCommonOverlays(page);
           return {
             action: "click",
@@ -585,6 +695,40 @@ export async function safeClick(
   } catch (e: unknown) {
     const err = e instanceof Error ? e.message : String(e);
     const lower = err.toLowerCase();
+    if (isIntercepted(err)) {
+      // Trial aşamasında yakalanmayan overlay durumları için bir kez daha dismiss + retry.
+      await dismissOverlaysSafely(page);
+      try {
+        await locator.click({ timeout, noWaitAfter: false });
+      } catch (retryErr: unknown) {
+        const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+        if (isIntercepted(retryMsg)) {
+          try {
+            await locator.click({ timeout: Math.min(timeout, 3000), force: true, noWaitAfter: false });
+            await page.waitForLoadState('domcontentloaded', { timeout: 1500 }).catch(() => {});
+          } catch {
+            const { overlayCount } = await detectCommonOverlays(page);
+            return {
+              action: "click",
+              status: "failed",
+              error: retryMsg,
+              startedAt,
+              endedAt: new Date().toISOString(),
+              meta: { reasonCode: "INTERACTION_INTERCEPTED", overlayCandidatesCount: overlayCount },
+            };
+          }
+        }
+        return {
+          action: "click",
+          status: "failed",
+          error: retryMsg,
+          startedAt,
+          endedAt: new Date().toISOString(),
+          evidenceRefs: options.evidenceRefs,
+          meta: { reasonCode: exceptionToReasonCode(retryMsg) },
+        };
+      }
+    }
     if (lower.includes("timeout") || lower.includes("exceeded")) {
       const recheck = await classifyVisibility(locator, page);
       if (recheck.classification !== "VISIBLE_IN_VIEWPORT") {
@@ -596,6 +740,11 @@ export async function safeClick(
           endedAt: new Date().toISOString(),
           meta: { reasonCode: recheck.reasonCode, evidence: recheck.evidence, phase: "timeout_recheck" },
         };
+      }
+      try {
+        await locator.click({ timeout: Math.min(timeout, 2_000), noWaitAfter: true });
+      } catch {
+        // bounded quick retry only once; preserve original timeout failure below.
       }
     }
     return {
@@ -613,7 +762,6 @@ export async function safeClick(
   if (waitStrategy === "networkidle") {
     await page.waitForLoadState("networkidle", { timeout: networkIdleTimeout }).catch(() => {});
   }
-  await page.waitForTimeout(400);
 
   const urlAfter = page.url();
   if (urlAfter && (urlAfter.toLowerCase().includes("logout") || urlAfter.toLowerCase().includes("delete"))) {

@@ -14,7 +14,7 @@ test("smoke: CLI run crawls multiple pages and writes summary with artifact mani
     await new Promise<void>((resolve, reject) => {
       const child = spawn("node", ["dist/cli.js", "--url", baseUrl, "--out", outDir, "--headless", "true"], {
         cwd: path.join(process.cwd()),
-        env: { ...process.env },
+        env: { ...process.env, AUDIT_ALLOW_PRIVATE_TARGETS: 'true' },
         stdio: "inherit",
       });
 
@@ -68,7 +68,7 @@ test("secrets are not leaked into JSON artifacts", async () => {
         ["dist/cli.js", "--url", baseUrl, "--out", outDir, "--headless", "true"],
         {
           cwd: path.join(process.cwd()),
-          env: { ...process.env, KAMU_AUDIT_PASSWORD: fakeSecret },
+          env: { ...process.env, KAMU_AUDIT_PASSWORD: fakeSecret, AUDIT_ALLOW_PRIVATE_TARGETS: 'true' },
           stdio: "inherit",
         },
       );

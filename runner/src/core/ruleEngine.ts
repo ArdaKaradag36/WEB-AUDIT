@@ -28,6 +28,10 @@ export type RuleEngineInput = {
   linkChecks?: LinkCheck[];
   /** Main document response headers (for security headers rule). */
   mainDocumentHeaders?: Record<string, string>;
+  /** Raw HTML of the main document (for DOM content rules). */
+  mainDocumentHtml?: string;
+  /** All response URLs observed (for SRI, tracking, and third-party checks). */
+  responseUrls?: string[];
   /** Cookies from context (for cookie security rule). */
   cookies?: CookieInfo[];
   /** Third-party origins observed (for third-party policy rule). */
@@ -38,6 +42,8 @@ export type RuleEngineInput = {
 
 import { runHttpResponseRules } from "../rules/http/analyzer";
 import { runJsAnalyzer } from "../rules/js/analyzer";
+import { runPageAnalyzer } from "../rules/page/analyzer";
+import { dedupeNetworkIssuesByUrl, partitionHttpIssues } from "./networkClassify";
 
 function isTelemetryUrl(url: string | undefined): boolean {
   if (!url) return false;
@@ -99,18 +105,31 @@ export function runRuleEngine(input: RuleEngineInput): Finding[] {
     });
   }
 
-  const networkNonPolicy = input.networkIssues.filter((i) => !i.policyReason);
-  const httpBad = networkNonPolicy.filter((i) => i.kind === "HTTP_4XX_5XX");
-  if (httpBad.length > 0) {
+  const networkDeduped = dedupeNetworkIssuesByUrl(input.networkIssues);
+  const networkNonPolicy = networkDeduped.filter((i) => !i.policyReason);
+  const { material4xx, minor404 } = partitionHttpIssues(networkNonPolicy);
+  if (material4xx.length > 0) {
     findings.push({
       ruleId: "network_rule",
       severity: "error",
       category: "network",
       title: "HTTP error responses detected",
-      detail: `${httpBad.length} response(s) with status >= 400.`,
+      detail: `${material4xx.length} response(s) with status >= 400 (excluding minor static 404s).`,
       remediation: "Fix endpoints returning 4xx/5xx; ensure static resources are accessible.",
-      meta: { count: httpBad.length, samples: httpBad.slice(0, 10) },
+      meta: { count: material4xx.length, samples: material4xx.slice(0, 10) },
       status: "FAILED",
+    });
+  }
+  if (minor404.length > 0) {
+    findings.push({
+      ruleId: "network_rule_minor_asset_404",
+      severity: "info",
+      category: "network",
+      title: "Minor static asset 404 (low impact)",
+      detail: `${minor404.length} small asset(s) returned 404 (icons/spinners/images).`,
+      remediation: "Optional: fix missing favicons or spinner assets; usually non-blocking for users.",
+      meta: { count: minor404.length, samples: minor404.slice(0, 10) },
+      status: "INFO",
     });
   }
 
@@ -130,7 +149,7 @@ export function runRuleEngine(input: RuleEngineInput): Finding[] {
   }
 
   // Telemetry / analytics endpoints: keep as informational only.
-  const telemetryIssues = input.networkIssues.filter(
+  const telemetryIssues = networkDeduped.filter(
     (i) =>
       (i.kind === "HTTP_4XX_5XX" || i.kind === "FAILED_REQUEST") &&
       isTelemetryUrl(i.url)
@@ -150,7 +169,7 @@ export function runRuleEngine(input: RuleEngineInput): Finding[] {
   }
 
   // Aggregate SKIPPED due to network policy (timeouts/429/blocked).
-  const policyIssues = input.networkIssues.filter((i) => i.policyReason === "NETWORK_POLICY");
+  const policyIssues = networkDeduped.filter((i) => i.policyReason === "NETWORK_POLICY");
   if (policyIssues.length > 0) {
     findings.push({
       ruleId: "network_policy_skipped",
@@ -212,15 +231,19 @@ export function runRuleEngine(input: RuleEngineInput): Finding[] {
     });
   }
 
-  const blocked = input.results.some((r) => r.status === "BLOCKED");
-  if (blocked) {
+  const captchaBlocked = input.results.some(
+    (r) => r.status === "BLOCKED" && r.code === "CORE.CAPTCHA.DETECTED",
+  );
+  if (captchaBlocked) {
     findings.push({
       ruleId: "blocker",
       severity: "critical",
       category: "blocker",
-      title: "Audit blocked (captcha or login required)",
-      remediation: "Use allowlisted auth plugin or manual review.",
-      meta: { codes: input.results.filter((r) => r.status === "BLOCKED").map((r) => r.code) },
+      title: "Audit blocked (captcha)",
+      remediation: "Use site-specific bypass in test environment or manual review.",
+      meta: {
+        codes: input.results.filter((r) => r.code === "CORE.CAPTCHA.DETECTED" && r.status === "BLOCKED").map((r) => r.code),
+      },
       status: "SKIPPED",
       skipReason: "AUTH_BLOCKED",
     });
@@ -230,7 +253,7 @@ export function runRuleEngine(input: RuleEngineInput): Finding[] {
       targetUrl: input.targetUrl,
       mainDocumentHeaders: input.mainDocumentHeaders,
       cookies: input.cookies,
-      networkIssues: input.networkIssues,
+      networkIssues: networkDeduped,
     }),
   );
 
@@ -239,11 +262,22 @@ export function runRuleEngine(input: RuleEngineInput): Finding[] {
     ...runJsAnalyzer({
       targetUrl: input.targetUrl,
       consoleIssues: input.consoleIssues,
-      responseUrls: input.thirdPartyOrigins ?? [],
-      // mainDocumentHtml could be wired here in the future; for now we omit it
-      // to avoid large payloads through the rule engine interface.
+      responseUrls: input.responseUrls ?? [],
+      mainDocumentHtml: input.mainDocumentHtml,
     }),
   );
+
+  // DOM / page content analysis: accessibility, SEO, privacy, mobile, SRI.
+  if (input.mainDocumentHtml) {
+    findings.push(
+      ...runPageAnalyzer({
+        targetUrl: input.targetUrl,
+        mainDocumentHtml: input.mainDocumentHtml,
+        mainDocumentHeaders: input.mainDocumentHeaders,
+        responseUrls: input.responseUrls ?? [],
+      }),
+    );
+  }
 
   if (input.thirdPartyOrigins && input.thirdPartyOrigins.length > 0) {
     const denylist = input.thirdPartyDenylist ?? [];

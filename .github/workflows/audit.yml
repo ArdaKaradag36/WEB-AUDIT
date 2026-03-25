@@ -42,14 +42,27 @@ jobs:
         run: npm run build
         working-directory: runner
 
+      - name: Start local test server
+        run: |
+          node -e "
+          const http = require('http');
+          const server = http.createServer((req, res) => {
+            res.writeHead(200, {'Content-Type': 'text/html'});
+            res.end('<html><head><title>CI Smoke Site</title></head><body><h1>CI Smoke</h1><a href=\"/about\">About</a><form method=\"GET\" action=\"/search\"><input name=\"q\" type=\"text\"/><button type=\"submit\">Search</button></form></body></html>');
+          });
+          server.listen(9876, () => console.log('Smoke server on :9876'));
+          " &
+          sleep 2
+        working-directory: runner
+
       - name: Run audit (smoke)
-        run: node dist/cli.js --url https://example.com --max-links 5 --max-ui-attempts 15 --out reports/runs/${{ github.run_id }}-${{ matrix.browser }}
+        run: node dist/cli.js --url http://localhost:9876 --max-links 5 --max-ui-attempts 15 --out reports/runs/${{ github.run_id }}-${{ matrix.browser }}
         working-directory: runner
 
       - name: Run audit (strict, main only)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          node dist/cli.js --url https://example.com --max-links 5 --strict --out reports/runs/${{ github.run_id }}-${{ matrix.browser }}-strict
+          node dist/cli.js --url http://localhost:9876 --max-links 5 --strict --out reports/runs/${{ github.run_id }}-${{ matrix.browser }}-strict
         working-directory: runner
 
       - name: Upload audit artifacts
@@ -97,5 +110,5 @@ jobs:
         working-directory: runner
 
       - name: Run tests
-        run: npm test
+        run: AUDIT_ALLOW_PRIVATE_TARGETS=true npm test
         working-directory: runner

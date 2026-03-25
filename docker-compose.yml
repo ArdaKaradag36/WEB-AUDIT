@@ -1,0 +1,35 @@
+# Build: docker compose build
+# Run:   docker compose up audit-host
+services:
+  audit-host:
+    build:
+      context: .
+      dockerfile: audit-host/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "5090:5090"
+    environment:
+      # Set a strong random key in production. Leave empty to disable API key auth (dev only).
+      - AUDIT_HOST_API_KEY=${AUDIT_HOST_API_KEY:-}
+      # Retention: delete audit runs older than N days. 0 = disabled.
+      - AuditHost__Retention__DeletedAfterDays=${AUDIT_RETENTION_DAYS:-90}
+      # Optional: Postgres connection string (leave empty to use SQLite).
+      - AuditHost__Postgres__ConnectionString=${POSTGRES_CONNECTION_STRING:-}
+    volumes:
+      - audit_data:/app/data
+      - runner_reports:/repo/runner/reports
+    # Use host DNS + reliable fallbacks so container can resolve local/corporate domains.
+    dns:
+      - 127.0.0.53
+      - 8.8.8.8
+      - 1.1.1.1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5090/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  audit_data:
+  runner_reports:

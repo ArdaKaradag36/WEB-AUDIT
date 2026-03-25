@@ -36,8 +36,10 @@ export const nviCookieConsentPlugin: Plugin = {
       }
     };
 
-    // Give the page a moment to render banners.
-    await ctx.page.waitForTimeout(1000);
+    await ctx.page.waitForSelector(
+      'button:has-text("Kabul et"), button:has-text("kabul"), a:has-text("Kabul et")',
+      { state: 'visible', timeout: 3000 }
+    ).catch(() => {});
 
     // 1) Explicit cookie banner text: \"Kabul et\" in Turkish.
     await tryClickByText("Kabul et");

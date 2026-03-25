@@ -56,6 +56,8 @@ export type UiCoverageSummary = {
   skippedOutOfViewportCount?: number;
   /** Total elementKey collisions (same key, different identity); helps tune elementKey. */
   collisionCountTotal?: number;
+  /** Set when the UI inventory / auto-interaction phase failed (see ui-inventory.json inventoryError). */
+  inventoryError?: string;
 };
 
 export type Metrics = {

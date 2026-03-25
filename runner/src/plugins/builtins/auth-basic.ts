@@ -62,7 +62,13 @@ export const authBasicPlugin: Plugin = {
       await passInput.press("Enter").catch(() => {});
     }
 
-    await ctx.page.waitForTimeout(2_000);
+    await ctx.page.waitForURL(
+      (url) => {
+        const p = url.pathname.toLowerCase();
+        return !/(login|signin|sign-in|giris|oturum)([\\/]|$)/i.test(p);
+      },
+      { timeout: 5000 }
+    ).catch(() => {});
 
     const hasCaptcha = await detectCaptcha(ctx.page);
     const stillLogin = await detectLogin(ctx.page);

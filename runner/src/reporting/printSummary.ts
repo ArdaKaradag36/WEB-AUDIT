@@ -6,11 +6,12 @@ export function printSummary(report: AuditReport) {
   console.log("==== AUDIT SUMMARY ====");
   console.log("Target:", report.targetUrl);
   console.log(
-    `Total: ${s.total} | PASS: ${s.pass} | FAIL: ${s.fail} | BLOCKED: ${s.blocked} | NA: ${s.na} | SKIPPED: ${s.skipped}`
+    `Total: ${s.total} | PASS: ${s.pass} | FAIL: ${s.fail} | BLOCKED: ${s.blocked} | WARN: ${s.warn} | NA: ${s.na} | SKIPPED: ${s.skipped}`
   );
 
   const failed = report.results.filter((r) => r.status === "FAIL");
   const blocked = report.results.filter((r) => r.status === "BLOCKED");
+  const warned = report.results.filter((r) => r.status === "WARN");
   const skipped = report.results.filter((r) => r.status === "SKIPPED");
 
   if (failed.length) {
@@ -21,6 +22,11 @@ export function printSummary(report: AuditReport) {
   if (blocked.length) {
     console.log("\n-- BLOCKED --");
     for (const r of blocked) console.log(`! ${r.code} - ${r.title} :: ${r.errorMessage ?? ""}`);
+  }
+
+  if (warned.length) {
+    console.log("\n-- WARN --");
+    for (const r of warned) console.log(`* ${r.code} - ${r.title} :: ${r.errorMessage ?? ""}`);
   }
 
   // Kamu için iyi: SKIPPED görünür olsun

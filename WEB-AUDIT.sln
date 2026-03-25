@@ -1,0 +1,57 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AuditHost", "audit-host\AuditHost.csproj", "{040C7ADC-1B1C-4788-A7DF-15F04946C6D8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebAudit.Core", "WebAudit.Core\WebAudit.Core.csproj", "{71825C72-B472-40E0-8355-8F77729732EB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebAudit.Postgres", "WebAudit.Postgres\WebAudit.Postgres.csproj", "{0E799ACA-CBC8-4392-82A6-DA7060701271}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebAudit.Shared", "WebAudit.Shared\WebAudit.Shared.csproj", "{F54B69E6-5F0E-4817-BAA7-6594FADDA0BB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebAudit.QueueWorker", "WebAudit.QueueWorker\WebAudit.QueueWorker.csproj", "{99A62903-C9F2-4B66-8571-47A194D77E16}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "audit-host", "audit-host", "{ECDD5021-B46A-4311-906F-F4C37303E76C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AuditHost.Tests", "audit-host\AuditHost.Tests\AuditHost.Tests.csproj", "{8582596C-8717-47B7-9EAE-554215B36892}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{040C7ADC-1B1C-4788-A7DF-15F04946C6D8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{040C7ADC-1B1C-4788-A7DF-15F04946C6D8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{040C7ADC-1B1C-4788-A7DF-15F04946C6D8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{040C7ADC-1B1C-4788-A7DF-15F04946C6D8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{71825C72-B472-40E0-8355-8F77729732EB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{71825C72-B472-40E0-8355-8F77729732EB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{71825C72-B472-40E0-8355-8F77729732EB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{71825C72-B472-40E0-8355-8F77729732EB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0E799ACA-CBC8-4392-82A6-DA7060701271}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0E799ACA-CBC8-4392-82A6-DA7060701271}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0E799ACA-CBC8-4392-82A6-DA7060701271}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0E799ACA-CBC8-4392-82A6-DA7060701271}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F54B69E6-5F0E-4817-BAA7-6594FADDA0BB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F54B69E6-5F0E-4817-BAA7-6594FADDA0BB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F54B69E6-5F0E-4817-BAA7-6594FADDA0BB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F54B69E6-5F0E-4817-BAA7-6594FADDA0BB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{99A62903-C9F2-4B66-8571-47A194D77E16}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{99A62903-C9F2-4B66-8571-47A194D77E16}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{99A62903-C9F2-4B66-8571-47A194D77E16}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{99A62903-C9F2-4B66-8571-47A194D77E16}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8582596C-8717-47B7-9EAE-554215B36892}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8582596C-8717-47B7-9EAE-554215B36892}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8582596C-8717-47B7-9EAE-554215B36892}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8582596C-8717-47B7-9EAE-554215B36892}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{8582596C-8717-47B7-9EAE-554215B36892} = {ECDD5021-B46A-4311-906F-F4C37303E76C}
+	EndGlobalSection
+EndGlobal

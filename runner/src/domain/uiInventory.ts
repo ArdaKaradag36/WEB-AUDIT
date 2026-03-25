@@ -102,7 +102,7 @@ export type RiskLevel = "safe" | "needs_allowlist" | "destructive" | "requires_a
 export type AttemptStatus = "success" | "failed" | "skipped";
 
 export type AttemptResult = {
-  action: "fill" | "click";
+  action: "fill" | "click" | "select";
   status: AttemptStatus;
   error?: string;
   startedAt: string;
@@ -156,6 +156,8 @@ export type UiInventory = {
   pageUrl: string;
   capturedAt: string;
   elements: UiElement[];
+  /** Present when domScan or runAutoUiAudit threw; elements may be partial. */
+  inventoryError?: string;
   /** Set by audit when per-step re-scan is used. */
   scrollMetrics?: {
     newlyDiscoveredPerScrollStep: number[];

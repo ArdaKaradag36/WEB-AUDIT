@@ -2,6 +2,7 @@ export type TestStatus =
   | "PASS"
   | "FAIL"
   | "BLOCKED"
+  | "WARN"
   | "NA"
   | "SKIPPED"; // ✅ EKLENDİ
 
@@ -39,6 +40,7 @@ export type AuditReport = {
     pass: number;
     fail: number;
     blocked: number;
+    warn: number;
     na: number;
     skipped: number; // ✅ EKLENDİ
   };

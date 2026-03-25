@@ -25,14 +25,17 @@ import type { UiInventory, UiGap, ReasonCode } from "./domain/uiInventory";
 
 import { pluginRegistry } from "./plugins/registry";
 import type { PluginContext } from "./plugins/types";
+import { isPrivateHostname } from "./core/networkPolicy";
 
 import { runSpecFile } from "./core/runSpec";
 import { loadConfig } from "./config/loadConfig";
-import { getAuditAiProvider, writeGeneratedTests } from "./ai";
+import { extraPluginsForHost } from "./config/sitePlugins";
 import { logEvent, setLogContext } from "./core/log";
 import { crawlSite } from "./core/crawler/crawler";
 import type { CrawlerConfig } from "./core/crawler/types";
 import { dismissOverlaysSafely } from "./auto/overlays";
+import { filterCookiesForTargetSite } from "./core/cookieFilter";
+import { normalizeConsoleIssuesForScoring } from "./core/consoleNormalize";
 
 function summarize(results: TestResult[]) {
   const count = (s: TestResult["status"]) => results.filter((r) => r.status === s).length;
@@ -42,6 +45,7 @@ function summarize(results: TestResult[]) {
     pass: count("PASS"),
     fail: count("FAIL"),
     blocked: count("BLOCKED"),
+    warn: count("WARN"),
     na: count("NA"),
     skipped: count("SKIPPED"),
   };
@@ -92,6 +96,11 @@ async function main(): Promise<0 | 1 | 2> {
   const pluginNames = getCsvArg("--plugins");
   const specPath = getArg("--spec");
   const resolvedSpecPath = specPath ? path.resolve(specPath) : undefined;
+  const uiMaxDurationMsArg = getArg("--ui-max-duration-ms");
+  const uiMaxConsecutiveNoSuccessArg = getArg("--ui-max-consecutive-no-success");
+  const uiActionTimeoutMsArg = getArg("--ui-action-timeout-ms");
+  const uiNetworkIdleTimeoutMsArg = getArg("--ui-network-idle-timeout-ms");
+  const uiAllowlistReviewMaxAttemptsArg = getArg("--ui-allowlist-review-max-attempts");
 
   if (!targetUrlArg) {
     console.error(
@@ -108,7 +117,6 @@ async function main(): Promise<0 | 1 | 2> {
       return "";
     }
   })();
-  const isNvi = targetHost === "www.nvi.gov.tr" || targetHost === "nvi.gov.tr";
   const maxUiAttemptsArg = getArg("--max-ui-attempts");
   const config = loadConfig({
     safeMode,
@@ -118,6 +126,11 @@ async function main(): Promise<0 | 1 | 2> {
     headless,
     // maxUiAttempts default’u loadConfig’ten (220) gelsin.
     maxUiAttempts: maxUiAttemptsArg ? Number(maxUiAttemptsArg) : undefined,
+    uiMaxDurationMs: uiMaxDurationMsArg ? Number(uiMaxDurationMsArg) : undefined,
+    uiMaxConsecutiveNoSuccess: uiMaxConsecutiveNoSuccessArg ? Number(uiMaxConsecutiveNoSuccessArg) : undefined,
+    uiActionTimeoutMs: uiActionTimeoutMsArg ? Number(uiActionTimeoutMsArg) : undefined,
+    uiNetworkIdleTimeoutMs: uiNetworkIdleTimeoutMsArg ? Number(uiNetworkIdleTimeoutMsArg) : undefined,
+    uiAllowlistReviewMaxAttempts: uiAllowlistReviewMaxAttemptsArg ? Number(uiAllowlistReviewMaxAttemptsArg) : undefined,
   });
   if (getArg("--click-allowlist")) {
     config.clickAllowlist = getCsvArg("--click-allowlist");
@@ -166,13 +179,88 @@ async function main(): Promise<0 | 1 | 2> {
   const usedPlugins: string[] = [];
   const requiresPlugins: string[] = [];
 
-  const launchOptions = { headless };
+  // In Docker containers running as root, Chromium requires --no-sandbox.
+  const isRunningAsRoot = process.getuid?.() === 0;
+  const chromiumArgs = isRunningAsRoot
+    ? ['--no-sandbox', '--disable-setuid-sandbox']
+    : [];
+  const launchOptions = { headless, args: chromiumArgs };
   const browser =
     browserName === "firefox"
-      ? await firefox.launch(launchOptions)
+      ? await firefox.launch({ headless })
       : await chromium.launch(launchOptions);
   const context = await browser.newContext();
   const page = await context.newPage();
+
+  // SIGTERM / SIGINT graceful shutdown
+  let _shutdownCalled = false;
+  const _gracefulShutdown = async (signal: string) => {
+    if (_shutdownCalled) return;
+    _shutdownCalled = true;
+    try { await context.tracing.stop({ path: path.join(tempDir, 'trace.zip') }); } catch {}
+    try { await context.close(); } catch {}
+    try { await browser.close(); } catch {}
+    try {
+      writeMinimalSummaryForCrash({
+        runDir: tempDir,
+        url: targetUrl,
+        runId,
+        errorMessage: `Process received ${signal}; audit was interrupted.`,
+      });
+      // Attempt to move the partial temp artifacts to the canonical output location
+      // so that ReconcileStuckJobs can find them and mark the job as 'error'.
+      if (!fs.existsSync(path.join(outDir, 'run.complete.json'))) {
+        fs.rmSync(outDir, { recursive: true, force: true });
+        try { fs.renameSync(tempDir, outDir); } catch {}
+      }
+    } catch {}
+    process.exit(1);
+  };
+  process.once('SIGTERM', () => void _gracefulShutdown('SIGTERM'));
+  process.once('SIGINT',  () => void _gracefulShutdown('SIGINT'));
+  // end shutdown setup
+
+  // SSRF protection: abort navigations to private IPs at the browser level.
+  const allowPrivateTargets = (process.env.AUDIT_ALLOW_PRIVATE_TARGETS === 'true');
+  const _ssrfCache = new Map<string, boolean>();
+  await context.route('**/*', async (route) => {
+    try {
+      const url = new URL(route.request().url());
+      if (['http:', 'https:'].includes(url.protocol)) {
+        const hostname = url.hostname;
+        let blocked = _ssrfCache.get(hostname);
+        if (blocked === undefined) {
+          blocked = await isPrivateHostname(hostname, { allowPrivate: allowPrivateTargets });
+          _ssrfCache.set(hostname, blocked);
+        }
+        if (blocked) {
+          logEvent('ssrf_blocked', { url: url.toString(), hostname }, 'WARN');
+          await route.abort('blockedbyresponse');
+          return;
+        }
+      }
+    } catch {}
+    await route.continue();
+  });
+
+  // Defense-in-depth: log 3xx redirects to private IPs.
+  page.on('response', async (response) => {
+    const status = response.status();
+    if (status >= 300 && status < 400) {
+      const location = response.headers()['location'];
+      if (location) {
+        try {
+          const dest = new URL(location, response.url());
+          if (['http:', 'https:'].includes(dest.protocol) &&
+              !allowPrivateTargets &&
+              await isPrivateHostname(dest.hostname)) {
+            logEvent('ssrf_redirect_detected',
+              { from: response.url(), to: dest.toString(), status }, 'WARN');
+          }
+        } catch { /* ignore malformed Location */ }
+      }
+    }
+  });
 
   await context.tracing.start({
     screenshots: true,
@@ -181,10 +269,10 @@ async function main(): Promise<0 | 1 | 2> {
   });
 
   const consoleCollector = await collectConsoleIssues(page);
-  const consoleIssues = consoleCollector.issues;
   const pageErrors = consoleCollector.pageErrors;
   const { issues: networkIssues, stats: networkStats } = await collectNetworkIssues(page);
   const responseUrls = collectResponseUrls(page);
+  let mainDocumentHtml: string | undefined;
 
   // Standard logging context for the whole run
   setLogContext({
@@ -208,6 +296,8 @@ async function main(): Promise<0 | 1 | 2> {
     if (response) mainDocumentHeaders = response.headers();
     const title = await page.title();
     const duration = Date.now() - t0;
+    // Capture HTML for DOM-level analysis rules (accessibility, SEO, privacy, SRI)
+    try { mainDocumentHtml = await page.content(); } catch { /* non-fatal */ }
 
     homepageLoaded = true;
 
@@ -221,7 +311,9 @@ async function main(): Promise<0 | 1 | 2> {
     const shotPath = artifactPathInRun(tempDir, "homepage_open_fail.png");
     try {
       await page.screenshot({ path: shotPath, fullPage: true });
-    } catch {}
+    } catch (shotErr: unknown) {
+      logEvent("screenshot_failed", { step: "homepage_open_fail", error: shotErr instanceof Error ? shotErr.message : String(shotErr) }, "WARN");
+    }
     addArtifact(artifacts, "SCREENSHOT", shotPath);
 
     results.push({
@@ -259,6 +351,12 @@ async function main(): Promise<0 | 1 | 2> {
     writeJsonReport(tempDir, report);
     printSummary(report);
     console.log("\nRun dir:", outDir);
+    // Rename tempDir to outDir so audit-host finds the artifacts at the canonical location.
+    if (!fs.existsSync(path.join(outDir, 'run.complete.json'))) {
+      fs.rmSync(outDir, { recursive: true, force: true });
+      fs.mkdirSync(path.dirname(outDir), { recursive: true });
+      try { fs.renameSync(tempDir, outDir); } catch { /* tempDir may not exist if error was very early */ }
+    }
     return 1; // crash
   }
 
@@ -267,7 +365,9 @@ async function main(): Promise<0 | 1 | 2> {
   // captcha tespitinden hemen once best-effort overlay dismiss deniyoruz.
   try {
     await dismissOverlaysSafely(page);
-  } catch {}
+  } catch (e: unknown) {
+    logEvent("overlay_dismiss_failed", { error: e instanceof Error ? e.message : String(e) }, "WARN");
+  }
 
   let captchaBlocked = await detectCaptcha(page);
   let authBlocked = false;
@@ -277,7 +377,9 @@ async function main(): Promise<0 | 1 | 2> {
     const shotPath = artifactPathInRun(tempDir, "blocked_captcha.png");
     try {
       await page.screenshot({ path: shotPath, fullPage: true });
-    } catch {}
+    } catch (e: unknown) {
+      logEvent("screenshot_failed", { step: "blocked_captcha", error: e instanceof Error ? e.message : String(e) }, "WARN");
+    }
     addArtifact(artifacts, "SCREENSHOT", shotPath);
 
     results.push({
@@ -315,7 +417,9 @@ async function main(): Promise<0 | 1 | 2> {
   if (!captchaBlocked) {
     // Cookie/consent plugin’leri verimlilik icin her sitede calismali.
     if (!pluginNames.includes("cookie-consent")) pluginNames.unshift("cookie-consent");
-    if (isNvi && !pluginNames.includes("nvi-cookie-consent")) pluginNames.unshift("nvi-cookie-consent");
+    for (const p of extraPluginsForHost(targetHost)) {
+      if (!pluginNames.includes(p)) pluginNames.unshift(p);
+    }
 
     for (const name of pluginNames) {
     const plugin = pluginRegistry[name];
@@ -360,7 +464,9 @@ async function main(): Promise<0 | 1 | 2> {
       const shotPath = artifactPathInRun(tempDir, "blocked_captcha_after_plugin.png");
       try {
         await page.screenshot({ path: shotPath, fullPage: true });
-      } catch {}
+      } catch (e: unknown) {
+        logEvent("screenshot_failed", { step: "blocked_captcha_after_plugin", error: e instanceof Error ? e.message : String(e) }, "WARN");
+      }
       addArtifact(artifacts, "SCREENSHOT", shotPath);
       results.push({
         code: "CORE.CAPTCHA.DETECTED",
@@ -377,13 +483,15 @@ async function main(): Promise<0 | 1 | 2> {
         const shotPath = artifactPathInRun(tempDir, "blocked_login.png");
         try {
           await page.screenshot({ path: shotPath, fullPage: true });
-        } catch {}
+        } catch (e: unknown) {
+          logEvent("screenshot_failed", { step: "blocked_login", error: e instanceof Error ? e.message : String(e) }, "WARN");
+        }
         addArtifact(artifacts, "SCREENSHOT", shotPath);
 
         results.push({
           code: "CORE.AUTH.REQUIRED",
           title: "Authentication appears required (login detected)",
-          status: "BLOCKED",
+          status: "WARN",
           errorMessage: "Login detected. Best-effort audit continues with partial coverage.",
           evidence: fs.existsSync(shotPath) ? [shotPath] : undefined,
         });
@@ -454,6 +562,8 @@ async function main(): Promise<0 | 1 | 2> {
       errorMessage: "Run without --spec (site-specific UI checks not executed).",
     });
   }
+
+  const consoleIssues = normalizeConsoleIssuesForScoring(consoleCollector.issues);
 
   // 2) Console health
   const consoleErrorCount = consoleIssues.filter((i) => i.type === "error").length;
@@ -591,12 +701,12 @@ async function main(): Promise<0 | 1 | 2> {
         startUrl: targetUrl,
         budget: {
           maxPages: config.maxLinks ?? linkLimit,
-          maxDepth: 4,
-          maxTimeMs: 60_000,
+          maxDepth: 6,
+          maxTimeMs: 120_000,
         },
         perHostRateLimit: {
-          maxRps: 4,
-          maxConcurrent: 2,
+          maxRps: 6,
+          maxConcurrent: 3,
         },
         robotsPolicy: "respect",
         sitemapPolicy: "disabled",
@@ -638,49 +748,119 @@ async function main(): Promise<0 | 1 | 2> {
     }
   }
 
+  // After crawl the active document is usually the last visited URL; UI inventory must match entry URL.
+  if (!captchaBlocked) {
+    try {
+      const back = await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
+      if (back) mainDocumentHeaders = back.headers();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      logEvent("post_crawl_goto_failed", { url: targetUrl, error: msg }, "WARN");
+      results.push({
+        code: "CORE.UI.ENTRY_NAV",
+        title: "Navigate back to entry URL after crawl (for UI phase)",
+        status: "NA",
+        errorMessage: msg,
+      });
+    }
+  }
+
   // UI inventory, safe attempts, then gaps (while page still open)
   let uiInventory: UiInventory | null = null;
   let gaps: UiGap[] = [];
   try {
+    // SPA / lazy layout: best-effort settle before element inventory
+    if (!captchaBlocked) {
+      try {
+        await page.waitForLoadState("load", { timeout: 6_000 });
+      } catch {
+        /* ignore */
+      }
+      try {
+        await page.waitForLoadState("networkidle", { timeout: 5_000 });
+      } catch {
+        /* ignore */
+      }
+    }
+
     const skipAll: ReasonCode | undefined = captchaBlocked
       ? "CAPTCHA_DETECTED"
       : undefined;
     const elements = await domScan({
       page,
       pageUrl: targetUrl,
-      isBlocked: captchaBlocked || authBlocked,
       skipReasonsForAll: skipAll,
     });
+    let scrollMetrics: UiInventory["scrollMetrics"];
+    let inventoryError: string | undefined;
     if (!captchaBlocked && elements.length > 0) {
-      const auditResult = await runAutoUiAudit({
-        page,
-        elements,
-        pageUrl: targetUrl,
-        config: {
-          safeMode: config.safeMode,
-          maxAttemptsTotal: config.maxUiAttempts ?? 150,
-          maxAttempts: config.maxUiAttempts,
-          clickAllowlist: config.clickAllowlist,
-          scrollSteps: 10,
-          maxAttemptsPerScrollStep: 45,
-        },
-      });
-      uiInventory = {
-        pageUrl: targetUrl,
-        capturedAt: new Date().toISOString(),
-        elements,
-        scrollMetrics: auditResult?.scrollMetrics,
-      };
-    } else {
-      uiInventory = {
-        pageUrl: targetUrl,
-        capturedAt: new Date().toISOString(),
-        elements,
-      };
+      try {
+        const auditResult = await runAutoUiAudit({
+          page,
+          elements,
+          pageUrl: targetUrl,
+          config: {
+            safeMode: config.safeMode,
+            maxAttemptsTotal: config.maxUiAttempts ?? 220,
+            maxAttempts: config.maxUiAttempts,
+            maxDurationMs: config.uiMaxDurationMs,
+            maxConsecutiveNoSuccess: config.uiMaxConsecutiveNoSuccess,
+            actionTimeout: config.uiActionTimeoutMs,
+            networkIdleTimeout: config.uiNetworkIdleTimeoutMs,
+            allowlistReviewEnabled: true,
+            allowlistReviewMaxAttempts: config.uiAllowlistReviewMaxAttempts,
+            clickAllowlist: config.clickAllowlist,
+            scrollSteps: 10,
+            maxAttemptsPerScrollStep: 45,
+          },
+        });
+        scrollMetrics = auditResult?.scrollMetrics;
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        inventoryError = `runAutoUiAudit: ${msg}`;
+        console.warn("runAutoUiAudit failed:", msg);
+      }
     }
+    uiInventory = {
+      pageUrl: targetUrl,
+      capturedAt: new Date().toISOString(),
+      elements,
+      ...(scrollMetrics && { scrollMetrics }),
+      ...(inventoryError && { inventoryError }),
+    };
     gaps = buildGaps(elements);
-  } catch (e: any) {
-    console.warn("UI inventory/gaps failed:", e?.message);
+    if (inventoryError) {
+      results.push({
+        code: "CORE.UI.AUDIT_FAILED",
+        title: "Automated UI interaction phase failed (inventory still saved)",
+        status: "FAIL",
+        errorMessage: inventoryError,
+        meta: { elementCount: elements.length },
+      });
+    } else {
+      results.push({
+        code: "CORE.UI.AUDIT_OK",
+        title: "UI inventory scan completed",
+        status: "PASS",
+        meta: { elementCount: elements.length, autoUiRan: !captchaBlocked && elements.length > 0 },
+      });
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn("UI inventory/gaps failed:", msg);
+    uiInventory = {
+      pageUrl: targetUrl,
+      capturedAt: new Date().toISOString(),
+      elements: [],
+      inventoryError: `domScan/buildGaps: ${msg}`,
+    };
+    gaps = [];
+    results.push({
+      code: "CORE.UI.AUDIT_FAILED",
+      title: "UI inventory phase failed before automated interactions",
+      status: "FAIL",
+      errorMessage: uiInventory.inventoryError,
+    });
   }
 
   const tracePath = artifactPathInRun(tempDir, "trace.zip");
@@ -689,8 +869,16 @@ async function main(): Promise<0 | 1 | 2> {
 
   let cookies: Array<{ name: string; secure?: boolean; httpOnly?: boolean; sameSite?: string }> = [];
   try {
-    cookies = await context.cookies();
-  } catch {}
+    const raw = await context.cookies();
+    cookies = filterCookiesForTargetSite(raw, targetUrl).map((c) => ({
+      name: c.name,
+      secure: c.secure,
+      httpOnly: c.httpOnly,
+      sameSite: c.sameSite,
+    }));
+  } catch (e: unknown) {
+    logEvent("cookies_read_failed", { error: e instanceof Error ? e.message : String(e) }, "WARN");
+  }
 
   await context.close();
   await browser.close();
@@ -698,7 +886,9 @@ async function main(): Promise<0 | 1 | 2> {
   let mainOrigin = "";
   try {
     mainOrigin = new URL(targetUrl).origin;
-  } catch {}
+  } catch (e: unknown) {
+    logEvent("url_parse_failed", { field: "mainOrigin", error: e instanceof Error ? e.message : String(e) }, "WARN");
+  }
   const thirdPartyOrigins = [...new Set(
     responseUrls
       .map((u) => {
@@ -719,6 +909,8 @@ async function main(): Promise<0 | 1 | 2> {
     networkIssues,
     linkChecks,
     mainDocumentHeaders,
+    mainDocumentHtml,
+    responseUrls,
     cookies: cookies.map((c) => ({ name: c.name, secure: c.secure, httpOnly: c.httpOnly, sameSite: c.sameSite })),
     thirdPartyOrigins,
   });
@@ -749,7 +941,7 @@ async function main(): Promise<0 | 1 | 2> {
     startedAt,
     finishedAt: finishedAt(),
     runnerVersion,
-    status: captchaBlocked || authBlocked ? "blocked" : "ok",
+    status: captchaBlocked ? "blocked" : "ok",
   };
   const runConfig: RunConfig = {
     headless,
@@ -785,6 +977,7 @@ async function main(): Promise<0 | 1 | 2> {
     skippedHiddenCount: sm?.skippedHiddenCount,
     skippedOutOfViewportCount: sm?.skippedOutOfViewportCount,
     collisionCountTotal: sm?.collisionCountTotal,
+    ...(uiInventory?.inventoryError && { inventoryError: uiInventory.inventoryError }),
   };
   const metrics: Metrics = {
     durationMs: results.find((r) => r.code === "CORE.HOMEPAGE.OPEN")?.meta?.durationMs as number | undefined,
@@ -800,7 +993,7 @@ async function main(): Promise<0 | 1 | 2> {
     retriedRequests: networkStats?.retriedRequests ?? 0,
     realFailures: networkStats?.realFailures ?? 0,
     pagesScanned: Math.max(1, pagesScannedFromCrawler || 1),
-    requestsTotal: networkIssues.length,
+    requestsTotal: responseUrls.length,
     timeouts: networkStats?.skippedNetwork ?? 0,
     findingsBySeverity: findings.reduce<Record<string, number>>((acc, f) => {
       acc[f.severity] = (acc[f.severity] ?? 0) + 1;
@@ -811,7 +1004,9 @@ async function main(): Promise<0 | 1 | 2> {
   let playwrightVersion: string | undefined;
   try {
     playwrightVersion = require("playwright/package.json").version;
-  } catch {}
+  } catch (e: unknown) {
+    logEvent("playwright_version_unavailable", { error: e instanceof Error ? e.message : String(e) }, "WARN");
+  }
 
   const runMetadata: RunMetadata = {
     nodeVersion: process.version,
@@ -839,24 +1034,6 @@ async function main(): Promise<0 | 1 | 2> {
     networkIssues,
   });
 
-  if (config.aiProviderEnabled && gaps.length > 0) {
-    try {
-      const aiProvider = getAuditAiProvider(config);
-      const suggestions = await aiProvider.generateTestSuggestions({
-        gaps,
-        inventory: uiInventory,
-        runId,
-        targetUrl,
-      });
-      if (suggestions.length > 0) {
-        const written = writeGeneratedTests(tempDir, suggestions);
-        console.log("Generated test skeletons (review required):", written.length, "files in", path.join(tempDir, "generated", "tests"));
-      }
-    } catch (e: any) {
-      console.warn("AI provider / generated tests failed:", e?.message);
-    }
-  }
-
   const report: AuditReport = {
     schemaVersion: "1.1",
     runnerVersion,
@@ -873,7 +1050,16 @@ async function main(): Promise<0 | 1 | 2> {
 
   writeJsonReport(tempDir, report);
 
-  // Finalize: move temp directory to final run directory and write completion marker.
+  // Finalize: move temp directory to final run directory.
+  const existingRunComplete = path.join(outDir, 'run.complete.json');
+  if (fs.existsSync(existingRunComplete)) {
+    try { await context.close(); } catch {}
+    try { await browser.close(); } catch {}
+    throw new Error(
+      `run.complete.json already exists at '${outDir}'. A completed run is present at this path. ` +
+      `Use a different --out directory to avoid overwriting existing results.`
+    );
+  }
   fs.rmSync(outDir, { recursive: true, force: true });
   fs.mkdirSync(path.dirname(outDir), { recursive: true });
   fs.renameSync(tempDir, outDir);
@@ -901,6 +1087,10 @@ async function main(): Promise<0 | 1 | 2> {
     skippedNetwork: metrics.skippedNetwork,
     findingsBySeverity: metrics.findingsBySeverity,
   });
+
+  // Prevent double-close if process exits normally.
+  process.removeListener('SIGTERM', _gracefulShutdown as any);
+  process.removeListener('SIGINT',  _gracefulShutdown as any);
 
   let exitCode: 0 | 1 | 2 = 0;
   if (strict) {

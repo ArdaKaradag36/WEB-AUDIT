@@ -1,4 +1,5 @@
 import type { Page } from "playwright";
+import { isSsrfBlocked } from "./networkPolicy";
 
 export type LinkCheck = {
   url: string;
@@ -51,6 +52,13 @@ export async function sampleLinks(page: Page, limit = 20): Promise<LinkCheck[]> 
 
   for (const url of unique) {
     try {
+      // SSRF guard: page.request bypasses context.route() — check hostname before fetching.
+      const hostname = new URL(url).hostname;
+      if (await isSsrfBlocked(hostname)) {
+        results.push({ url, status: "SKIPPED", reason: "SSRF_BLOCKED" });
+        continue;
+      }
+
       // GET daha stabil (HEAD bazı sunucularda sorun çıkarıyor)
       const resp = await page.request.get(url, { timeout: 15_000 });
       const status = resp.status();

@@ -1,0 +1,41 @@
+openapi: 3.1.0
+info:
+  title: WEB-AUDIT audit-host API
+  version: "1.0.0"
+  description: |
+    Versioned surface is `/api/v1/...`. Legacy `/api/...` mirrors the same routes.
+servers:
+  - url: http://127.0.0.1:5090
+paths:
+  /health/live:
+    get:
+      summary: Liveness probe
+  /health/ready:
+    get:
+      summary: Readiness (SQLite open)
+  /api/v1/health:
+    get:
+      summary: Health JSON
+  /api/v1/audits:
+    post:
+      summary: Create audit job
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetUrl]
+              properties:
+                targetUrl: { type: string, format: uri }
+                externalTicketId: { type: string }
+                loginMode: { type: string }
+                identifier: { type: string }
+                password: { type: string }
+                maxLinks: { type: integer }
+                maxUiAttempts: { type: integer }
+  /api/v1/audits/current:
+    get:
+      summary: Latest job (wrapper `{ current }`)
+  /api/v1/audits/{id}/sarif:
+    get:
+      summary: SARIF 2.1.0 export from summary.json

@@ -16,10 +16,18 @@ export type AuditConfig = {
   clickAllowlist: string[];
   /** Max UI elements to attempt (fill/click) per run. */
   maxUiAttempts: number;
-  /** Enable AI provider (test-plan suggestions). Disabled by default. */
-  aiProviderEnabled: boolean;
   /** Proxy URL when running in closed network (e.g. HTTP_PROXY). */
   proxy?: string;
+  /** Max duration for auto UI audit phase in ms. */
+  uiMaxDurationMs: number;
+  /** Stop auto UI phase after this many non-success attempts. */
+  uiMaxConsecutiveNoSuccess: number;
+  /** Per-action timeout for click/fill in ms. */
+  uiActionTimeoutMs: number;
+  /** Network idle wait timeout after click in ms. */
+  uiNetworkIdleTimeoutMs: number;
+  /** Max bounded attempts for review-required allowlist candidates. */
+  uiAllowlistReviewMaxAttempts: number;
 };
 
 const DEFAULTS: AuditConfig = {
@@ -30,7 +38,11 @@ const DEFAULTS: AuditConfig = {
   headless: true,
   clickAllowlist: [],
   maxUiAttempts: 220,
-  aiProviderEnabled: false,
+  uiMaxDurationMs: 240_000,
+  uiMaxConsecutiveNoSuccess: 70,
+  uiActionTimeoutMs: 3_500,
+  uiNetworkIdleTimeoutMs: 1_000,
+  uiAllowlistReviewMaxAttempts: 12,
 };
 
 function loadEnvFile(dir: string): Record<string, string> {
@@ -56,7 +68,8 @@ function loadEnvFile(dir: string): Record<string, string> {
  */
 export function loadConfig(cliOverrides?: Partial<AuditConfig>): AuditConfig {
   const cwd = process.cwd();
-  const runnerRoot = path.resolve(cwd, "..");
+  // Resolved from compiled `dist/config/loadConfig.js` → runner package root (not cwd).
+  const runnerRoot = path.resolve(__dirname, "..", "..");
   const env = { ...loadEnvFile(cwd), ...loadEnvFile(runnerRoot), ...process.env };
 
   const fromEnv: Partial<AuditConfig> = {
@@ -67,8 +80,12 @@ export function loadConfig(cliOverrides?: Partial<AuditConfig>): AuditConfig {
     headless: env.AUDIT_HEADLESS !== undefined ? env.AUDIT_HEADLESS !== "0" && env.AUDIT_HEADLESS.toLowerCase() !== "false" : undefined,
     clickAllowlist: env.AUDIT_CLICK_ALLOWLIST ? env.AUDIT_CLICK_ALLOWLIST.split(",").map((s) => s.trim()).filter(Boolean) : undefined,
     maxUiAttempts: env.AUDIT_MAX_UI_ATTEMPTS !== undefined ? Number(env.AUDIT_MAX_UI_ATTEMPTS) : undefined,
-    aiProviderEnabled: env.AUDIT_AI_PROVIDER_ENABLED !== undefined ? env.AUDIT_AI_PROVIDER_ENABLED !== "0" && env.AUDIT_AI_PROVIDER_ENABLED.toLowerCase() !== "false" : undefined,
     proxy: env.HTTP_PROXY || env.https_proxy || env.HTTPS_PROXY || undefined,
+    uiMaxDurationMs: env.AUDIT_UI_MAX_DURATION_MS !== undefined ? Number(env.AUDIT_UI_MAX_DURATION_MS) : undefined,
+    uiMaxConsecutiveNoSuccess: env.AUDIT_UI_MAX_CONSECUTIVE_NO_SUCCESS !== undefined ? Number(env.AUDIT_UI_MAX_CONSECUTIVE_NO_SUCCESS) : undefined,
+    uiActionTimeoutMs: env.AUDIT_UI_ACTION_TIMEOUT_MS !== undefined ? Number(env.AUDIT_UI_ACTION_TIMEOUT_MS) : undefined,
+    uiNetworkIdleTimeoutMs: env.AUDIT_UI_NETWORK_IDLE_TIMEOUT_MS !== undefined ? Number(env.AUDIT_UI_NETWORK_IDLE_TIMEOUT_MS) : undefined,
+    uiAllowlistReviewMaxAttempts: env.AUDIT_UI_ALLOWLIST_REVIEW_MAX_ATTEMPTS !== undefined ? Number(env.AUDIT_UI_ALLOWLIST_REVIEW_MAX_ATTEMPTS) : undefined,
   };
 
   const merged: AuditConfig = {

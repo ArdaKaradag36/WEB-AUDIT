@@ -3,6 +3,7 @@ import { collectNetworkIssues } from "../collectNetworkIssues";
 import { domScan } from "../../auto/domScan";
 import { canonicalizeUrl } from "./urlNormalizer";
 import { UrlQueue } from "./urlQueue";
+import { isSsrfBlocked } from "../networkPolicy";
 import type {
   CrawlContext,
   CrawlerConfig,
@@ -63,6 +64,8 @@ async function getSpaRoutes(page: Page): Promise<string[]> {
 async function fetchRobots(base: URL, page: Page): Promise<RobotsCacheEntry | null> {
   const robotsUrl = new URL("/robots.txt", base.origin).toString();
   try {
+    // SSRF guard: page.request bypasses context.route() intercept.
+    if (await isSsrfBlocked(base.hostname)) return null;
     const resp = await page.request.get(robotsUrl, { timeout: 10_000 });
     if (!resp.ok()) return null;
     const text = await resp.text();
@@ -279,7 +282,6 @@ export async function crawlSite(args: {
     const uiElements = await domScan({
       page,
       pageUrl: item.url.toString(),
-      isBlocked: false,
     });
     const stableSelectors = uiElements
       .map((el) => el.recommendedSelectors?.[0])

@@ -1,5 +1,6 @@
 import type { Page } from "playwright";
 import type { Finding } from "../../domain/finding";
+import { isSsrfBlocked } from "../../core/networkPolicy";
 
 export type FormAnalyzerOptions = {
   /** Max number of forms to actively probe with HTTP requests. */
@@ -299,6 +300,21 @@ export async function analyzeForms(
       const sep = base.includes("?") ? "&" : "?";
       return `${base}${sep}${params.toString()}`;
     })();
+
+    // SSRF guard: page.request bypasses context.route() intercept.
+    if (await isSsrfBlocked(actionUrl.hostname)) {
+      findings.push({
+        ruleId: "KWA-FORM-SSRF-BLOCKED",
+        severity: "warn",
+        category: "form",
+        title: "Form action points to private/internal host — SSRF probe blocked",
+        detail: "The form action URL resolved to a private IP address. Active probing was skipped.",
+        confidence: 0.9,
+        evidence: [actionUrl.toString()],
+        meta: { action: actionUrl.toString(), formIndex: form.index },
+      });
+      continue;
+    }
 
     try {
       const resp = await page.request.get(requestUrl, {

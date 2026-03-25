@@ -1,4 +1,6 @@
 import type { Page, Response, Request } from "@playwright/test";
+import { dedupeNetworkIssuesByUrl, isLikelyAbortedMediaRequest } from "./networkClassify";
+import { isSsrfBlocked } from "./networkPolicy";
 
 export type NetworkIssue = {
   url: string;
@@ -18,6 +20,17 @@ export type NetworkStats = {
   /** Number of requests we marked as SKIPPED due to network policy (timeouts/429/blocked). */
   skippedNetwork: number;
 };
+
+/** mailto:/tel:/sms: tarayıcıda uygulama açar; HTTP hatası değildir — sahte "critical" üretmemek için yok sayılır. */
+function isNonHttpAppNavigationUrl(url: string): boolean {
+  const u = url.trim().toLowerCase();
+  return (
+    u.startsWith("mailto:") ||
+    u.startsWith("tel:") ||
+    u.startsWith("sms:") ||
+    u.startsWith("javascript:")
+  );
+}
 
 function isNetworkPolicyFailure(message: string | undefined): boolean {
   if (!message) return false;
@@ -46,6 +59,13 @@ export async function collectNetworkIssues(page: Page): Promise<{
   };
 
   async function retryOnce(url: string): Promise<number | "failed"> {
+    // SSRF guard: page.request bypasses context.route() intercept.
+    try {
+      const hostname = new URL(url).hostname;
+      if (await isSsrfBlocked(hostname)) return "failed";
+    } catch {
+      return "failed";
+    }
     stats.retriedRequests += 1;
     try {
       const resp = await page.request.get(url, { timeout: 15_000 });
@@ -58,6 +78,14 @@ export async function collectNetworkIssues(page: Page): Promise<{
   page.on("requestfailed", async (req: Request) => {
     const failureText = req.failure()?.errorText;
     const url = req.url();
+
+    if (isNonHttpAppNavigationUrl(url)) {
+      return;
+    }
+
+    if (isLikelyAbortedMediaRequest(url, failureText)) {
+      return;
+    }
 
     if (isNetworkPolicyFailure(failureText)) {
       stats.skippedNetwork += 1;
@@ -124,5 +152,14 @@ export async function collectNetworkIssues(page: Page): Promise<{
     }
   });
 
-  return { issues, stats };
+  const dedupedIssues = dedupeNetworkIssuesByUrl(issues);
+  const uniqueFailUrls = new Set<string>();
+  for (const i of dedupedIssues) {
+    if (i.policyReason) continue;
+    if (i.kind === "FAILED_REQUEST") uniqueFailUrls.add(i.url);
+    if (i.kind === "HTTP_4XX_5XX" && (i.status ?? 0) >= 500) uniqueFailUrls.add(i.url);
+  }
+  stats.realFailures = uniqueFailUrls.size;
+
+  return { issues: dedupedIssues, stats };
 }

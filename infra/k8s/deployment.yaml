@@ -1,0 +1,43 @@
+# Örnek: audit-host Deployment (özelleştirin)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit-host
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: audit-host
+  template:
+    metadata:
+      labels:
+        app: audit-host
+    spec:
+      containers:
+        - name: audit-host
+          image: ghcr.io/your-org/web-audit/audit-host:latest
+          ports:
+            - containerPort: 5090
+          env:
+            - name: ASPNETCORE_URLS
+              value: http://0.0.0.0:5090
+            - name: AuditHost__DataDirectory
+              value: /data
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: audit-host-data-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: audit-host-data-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi

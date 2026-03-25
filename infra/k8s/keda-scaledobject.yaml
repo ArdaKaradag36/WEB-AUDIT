@@ -1,0 +1,38 @@
+# Örnek: KEDA ile worker ölçekleme (kuyruk bağlandığında)
+# IMPORTANT: Store AMQP credentials in a Kubernetes Secret and reference via TriggerAuthentication.
+# See keda-postgres-queue-scaledobject.yaml for the correct pattern.
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rabbitmq-secret
+type: Opaque
+stringData:
+  # Replace with your actual AMQP connection string – never commit real credentials.
+  host: amqp://guest:guest@rabbitmq:5672/
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: rabbitmq-trigger-auth
+spec:
+  secretTargetRef:
+    - parameter: host
+      name: rabbitmq-secret
+      key: host
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: web-audit-worker
+spec:
+  scaleTargetRef:
+    name: web-audit-worker
+  minReplicaCount: 0
+  maxReplicaCount: 10
+  triggers:
+    - type: rabbitmq
+      authenticationRef:
+        name: rabbitmq-trigger-auth
+      metadata:
+        queueName: audit-jobs

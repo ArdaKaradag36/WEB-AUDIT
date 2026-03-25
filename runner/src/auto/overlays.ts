@@ -83,7 +83,10 @@ export async function dismissOverlaysSafely(page: Page): Promise<boolean> {
       const box = await btn.boundingBox();
       if (!box || box.width <= 0 || box.height <= 0) continue;
       await btn.click({ timeout: 2000 });
-      await page.waitForTimeout(350);
+      await page.waitForFunction(
+        () => !document.querySelector('[role="dialog"],[role="alertdialog"]')?.checkVisibility(),
+        { timeout: 2000 }
+      ).catch(() => {});
       return true;
     } catch {
       continue;
